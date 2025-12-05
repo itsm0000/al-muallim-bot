@@ -47,6 +47,7 @@ async def start_command(update: Update, context) -> None:
 - /grade - بدء تصحيح جديد
 - /help - عرض المساعدة
 - /cancel - إلغاء التصحيح الحالي
+- /stop - إيقاف البوت
 
 📚 المنهج الدراسي: حسين محمد - فيزياء 2025
 🤖 مدعوم بـ Gemini 3 Pro (Thinking Mode)
@@ -79,6 +80,15 @@ async def help_command(update: Update, context) -> None:
 """
     await update.message.reply_text(help_message)
 
+async def stop_command(update: Update, context) -> None:
+    """Handle /stop command - gracefully shutdown the bot"""
+    await update.message.reply_text("🛑 جاري إيقاف البوت...\nStopping the bot...")
+    logger.info("Bot shutdown requested via /stop command")
+    # Stop the application
+    application = context.application
+    await application.stop()
+    await application.shutdown()
+
 def main():
     """Main bot function"""
     logger.info("=" * 50)
@@ -91,6 +101,7 @@ def main():
     # Add handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stop", stop_command))
     
     # Conversation handler for grading
     conv_handler = ConversationHandler(

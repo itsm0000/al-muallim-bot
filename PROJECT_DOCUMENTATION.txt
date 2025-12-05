@@ -1,0 +1,277 @@
+================================================================================
+                    AL-MUALLIM BOT - PROJECT DOCUMENTATION
+                    مشروع المُعلم - التوثيق الكامل
+================================================================================
+
+=== OVERVIEW ===
+
+Al-Muallim Bot (المُعلم) is an intelligent Telegram bot designed to automatically 
+grade handwritten physics exams using AI-powered analysis. It's built for Iraqi 
+physics students following Hussein Mohammed's 2025 physics curriculum.
+
+The name "Al-Muallim" (المُعلم) means "The Teacher" in Arabic.
+
+
+=== WHAT IT DOES ===
+
+1. RECEIVES EXAM IMAGES
+   - Users send the bot a photo of the exam question
+   - Users then send a photo of their handwritten answer
+
+2. GRADES USING AI
+   - The bot uses Google's Gemini 2.5 Pro AI model with "thinking mode"
+   - It compares the student's answer against the official curriculum
+   - Provides a score out of 10 with detailed feedback in Arabic
+
+3. ANNOTATES IMAGES
+   - Returns the answer image with visual annotations:
+     ✓ Green checkmark: Correct answer
+     ✗ Red X: Mistake
+     ! Yellow exclamation: Partially correct
+
+4. PROVIDES DETAILED FEEDBACK
+   - Lists what was correct, incorrect, partially correct, and missing
+   - All feedback is in Arabic for the target audience
+
+
+=== HOW IT'S BUILT ===
+
+TECHNOLOGY STACK:
+-----------------
+- Language: Python 3.9+
+- Telegram Framework: python-telegram-bot (v21+)
+- AI Model: Google Gemini 2.5 Pro (via google-genai library)
+- Image Processing: Pillow (PIL)
+- OCR (Optical Character Recognition): EasyOCR (Arabic + English)
+- PDF Processing: pdfplumber
+- Environment Management: python-dotenv
+
+PROJECT STRUCTURE:
+------------------
+
+al-muallim-bot/
+│
+├── bot.py                    # Main entry point - starts the Telegram bot
+├── config.py                 # Configuration settings and environment variables
+├── requirements.txt          # Python dependencies
+├── .env                      # API keys (TELEGRAM_BOT_TOKEN, GOOGLE_API_KEY)
+├── .env.example              # Template for environment variables
+│
+├── handlers/
+│   └── upload_handler.py     # Manages conversation flow for receiving images
+│
+├── grading/
+│   ├── grader.py             # Core AI grading logic using Gemini
+│   └── annotator.py          # Draws annotations on answer images
+│
+├── scripts/
+│   └── ingest_curriculum.py  # Extracts text from curriculum PDFs
+│
+├── utils/
+│   ├── logger.py             # Centralized logging with Arabic support
+│   └── ocr_detector.py       # EasyOCR text detection for annotations
+│
+├── curriculum_data/
+│   └── curriculum.json       # Extracted curriculum text (generated)
+│
+└── temp_images/              # Temporary storage for user-uploaded images
+
+
+CORE COMPONENTS EXPLAINED:
+--------------------------
+
+1. bot.py
+   - Creates the Telegram application using the Bot API
+   - Registers command handlers (/start, /help, /grade, /cancel, /stop)
+   - Sets up conversation handler for the grading flow
+
+2. config.py
+   - Loads API keys from .env file
+   - Defines paths for curriculum data and temp images
+   - Sets AI model configuration (model name, thinking level)
+   - Defines annotation color codes
+
+3. handlers/upload_handler.py
+   - Implements a 2-step conversation:
+     Step 1: Receive question image → WAITING_FOR_QUESTION
+     Step 2: Receive answer image → WAITING_FOR_ANSWER → Grade → Send results
+   - Handles image download, grading, and cleanup
+
+4. grading/grader.py (PhysicsGrader class)
+   - Loads the curriculum from curriculum.json
+   - Builds a detailed system prompt in Arabic for the AI
+   - Sends question + answer images to Gemini API
+   - Parses JSON response with score, feedback, and annotations
+   - Uses low temperature (0.1) for consistent grading
+
+5. grading/annotator.py
+   - Uses EasyOCR to detect text locations in the answer image
+   - Merges nearby text boxes into answer regions
+   - Draws symbols (checkmark/X/exclamation) on detected answer areas
+   - Displays the score in a circle in the top-left corner
+
+6. utils/ocr_detector.py
+   - Initializes EasyOCR reader for Arabic and English
+   - Detects text boxes with bounding box coordinates
+   - Provides fuzzy matching to find specific text in detected boxes
+
+7. scripts/ingest_curriculum.py
+   - Reads physics curriculum PDF files using pdfplumber
+   - Extracts text from each page
+   - Saves structured data to curriculum_data/curriculum.json
+
+
+=== HOW TO OPERATE ===
+
+INITIAL SETUP:
+--------------
+
+1. Install Python 3.9 or higher
+
+2. Navigate to the project directory:
+   cd al-muallim-bot
+
+3. Create a virtual environment:
+   python -m venv venv
+
+4. Activate the virtual environment:
+   Windows: .\venv\Scripts\activate
+   macOS/Linux: source venv/bin/activate
+
+5. Install dependencies:
+   pip install -r requirements.txt
+
+6. Set up API keys:
+   - Copy .env.example to .env
+   - Add your Telegram Bot Token (from @BotFather)
+   - Add your Google Cloud API Key (with Gemini access)
+
+7. Extract the curriculum (one-time):
+   python scripts/ingest_curriculum.py
+
+
+RUNNING THE BOT:
+----------------
+
+1. Activate the virtual environment (if not already active):
+   .\venv\Scripts\activate
+
+2. Start the bot:
+   python bot.py
+
+3. You should see:
+   "Starting Al-Muallim Bot"
+   "Bot is running... Press Ctrl+C to stop"
+
+
+USING THE BOT (for students):
+-----------------------------
+
+1. Open Telegram and find your bot by its username
+2. Send /start to see the welcome message
+3. Send /grade to begin grading
+4. Send a photo of the exam question
+5. Send a photo of your handwritten answer
+6. Wait 10-30 seconds for AI processing
+7. Receive:
+   - Annotated image with symbols marking correct/incorrect answers
+   - Text message with detailed feedback and score
+
+
+AVAILABLE COMMANDS:
+-------------------
+/start  - Welcome message and bot introduction
+/grade  - Start a new grading session
+/help   - Display help information
+/cancel - Cancel current grading session
+/stop   - Stop the bot (admin)
+
+
+=== AI GRADING DETAILS ===
+
+The AI follows these grading rules:
+
+SCORING SCALE:
+- 10/10: Perfect solution with no errors
+- 8-9/10: Excellent with minor mistakes
+- 7/10: Very good with few errors or missing parts
+- 6/10: Good but with several errors
+- 4-5/10: Average - correct idea but weak execution
+- 2-3/10: Weak with many errors
+- 0-1/10: No solution or completely wrong
+
+EVALUATION PROCESS:
+1. Read the question image to understand what's being asked
+2. Check the curriculum for the correct answer
+3. Compare student's answer with the curriculum
+4. Double-check before making a judgment
+5. Identify unanswered questions
+
+OUTPUT FORMAT:
+The AI returns structured JSON with:
+- score: Number from 0-10
+- feedback_ar: Detailed feedback in Arabic
+- annotations: List of text snippets with labels (correct/mistake/partial/unclear)
+
+
+=== TROUBLESHOOTING ===
+
+PROBLEM: "Curriculum file not found"
+SOLUTION: Run python scripts/ingest_curriculum.py
+
+PROBLEM: "ModuleNotFoundError"
+SOLUTION: Ensure venv is activated and run pip install -r requirements.txt
+
+PROBLEM: "Invalid API key"
+SOLUTION: Check .env file has correct TELEGRAM_BOT_TOKEN and GOOGLE_API_KEY
+
+PROBLEM: Bot not responding
+SOLUTION: 
+- Verify bot is running (python bot.py)
+- Check logs in bot.log
+- Verify Telegram token is correct
+
+PROBLEM: Arabic text not displaying correctly
+SOLUTION: Ensure terminal/console supports UTF-8 encoding
+
+
+=== REQUIREMENTS ===
+
+Python packages (requirements.txt):
+- python-telegram-bot>=21.0  (Telegram API integration)
+- google-genai                (Google Gemini AI access)
+- pdfplumber                  (PDF text extraction)
+- Pillow                      (Image processing)
+- python-dotenv               (Environment variable loading)
+- easyocr                     (Text detection in images)
+
+
+=== API KEYS NEEDED ===
+
+1. TELEGRAM_BOT_TOKEN
+   - Get from @BotFather on Telegram
+   - Create new bot with /newbot command
+   
+2. GOOGLE_API_KEY
+   - Get from Google AI Studio (aistudio.google.com/apikey)
+   - Ensure Gemini API is enabled
+
+
+=== LOGGING ===
+
+All activities are logged to:
+- Console: INFO level
+- bot.log file: DEBUG level (more detailed)
+
+
+=== CREDITS ===
+
+- AI Model: Google Gemini 2.5 Pro
+- Curriculum: Hussein Mohammed - Physics 2025 (حسين محمد - فيزياء 2025)
+- Framework: python-telegram-bot
+- OCR: EasyOCR
+
+
+================================================================================
+                          END OF DOCUMENTATION
+================================================================================
