@@ -20,49 +20,60 @@ class PhysicsGrader:
     """AI-powered physics grader using Gemini 3 Pro"""
     
     def __init__(self):
-        """Initialize the Gemini client and load curriculum"""
+        """Initialize the Gemini client and upload curriculum PDFs"""
         logger.info("Initializing PhysicsGrader")
         
         # Initialize Gemini client
         self.client = genai.Client(api_key=GOOGLE_API_KEY)
         logger.info(f"Using model: {GEMINI_MODEL}")
         
-        # Load curriculum
-        self.curriculum = self._load_curriculum()
-        logger.info("Curriculum loaded successfully")
+        # Upload curriculum PDFs to Gemini (persistent files)
+        self.curriculum_files = self._upload_curriculum_pdfs()
+        logger.info("Curriculum PDFs uploaded successfully")
     
-    def _load_curriculum(self) -> Dict:
-        """Load curriculum from JSON file"""
-        if not CURRICULUM_FILE.exists():
-            raise FileNotFoundError(
-                f"Curriculum file not found: {CURRICULUM_FILE}\n"
-                "Please run: python scripts/ingest_curriculum.py"
-            )
+    def _upload_curriculum_pdfs(self) -> Dict:
+        """Upload curriculum PDFs to Gemini as persistent files"""
+        from .pdf_finder import find_curriculum_pdfs
         
-        with open(CURRICULUM_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    
-    def _build_curriculum_context(self) -> str:
-        """Build curriculum context string for the prompt"""
-        context_parts = []
+        # Find PDFs by file size (avoids Arabic filename encoding issues)
+        pdf_paths = find_curriculum_pdfs()
         
-        for category, data in self.curriculum.items():
-            context_parts.append(f"\n## {category}\n")
-            for page in data['pages']:
-                context_parts.append(f"### صفحة {page['page_num']}\n")
-                context_parts.append(page['text'])
-                context_parts.append("\n")
+        if not pdf_paths:
+            raise Exception("Curriculum PDFs not found!")
         
-        return "\n".join(context_parts)
+        uploaded_files = {}
+        
+        for category, pdf_path in pdf_paths.items():
+            if not pdf_path.exists():
+                logger.warning(f"PDF not found: {pdf_path}")
+                continue
+                
+            logger.info(f"Uploading {category} ({pdf_path.stat().st_size // 1_000_000}MB)...")
+            try:
+                # Upload PDF file using path
+                file_obj = self.client.files.upload(file=pdf_path)
+                uploaded_files[category] = file_obj
+                logger.info(f"✓ {category} uploaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to upload {category}: {e}")
+
+        if not uploaded_files:
+            raise Exception("No curriculum PDFs could be uploaded!")
+            
+        return uploaded_files
     
     def _build_system_prompt(self) -> str:
         """Build the system prompt for grading"""
-        curriculum_context = self._build_curriculum_context()
+        
         
         prompt = f"""أنت "المعلم" (Al-Muallim)، مُصحح فيزياء دقيق جداً ومتسق.
 
 ## المنهج الدراسي (مرجع الإجابات):
-{curriculum_context}
+لقد تم إرسال ملفات PDF الكاملة للمنهج الدراسي معك في هذه المحادثة. راجع هذه الملفات للحصول على الإجابات الصحيحة:
+- ملف "الكلاميات": يحتوي على جميع الأسئلة النظرية والإجابات
+- ملف "المسائل": يحتوي على جميع المسائل والحلول
+
+**يجب عليك قراءة الملفات المرفقة بعناية قبل تقييم إجابة الطالب.**
 
 ## التقييم المتوازن:
 - **10/10**: حل مثالي بدون أي أخطاء
@@ -78,17 +89,35 @@ class PhysicsGrader:
 2. **راجع المنهج** - تحقق من المنهج الدراسي أعلاه للإجابة الصحيحة
 3. **قارن بعناية** - قارن إجابة الطالب بالإجابة الصحيحة من المنهج
 4. **تحقق مرتين** - قبل أن تحكم على إجابة، راجعها مرة أخرى
-5. **اكتشف الأسئلة غير المجاب عنها** - اذكرها في feedback_ar
-6. **لا تناقض نفسك** - إذا كان النص في annotations بـ label="correct" فلا تذكره في قسم "الخاطئ" في feedback_ar
-7. **تحقق من المنهج بدقة** - قبل أن تعتبر إجابة خاطئة، تأكد أنها فعلاً تخالف المنهج
-8. **تقبل الاختلافات البسيطة** - إذا كانت الإجابة صحيحة بشكل عام حتى لو صياغتها مختلفة قليلاً، اعتبرها صحيحة
+
+## ⚠️ قواعد الاتساق الصارمة (CRITICAL - يجب الالتزام 100%):
+
+### 1. تعريف "السؤال الناقص" (Missing Question):
+- السؤال الناقص = سؤال موجود في ورقة السؤال لكن لا توجد له إجابة في ورقة الطالب
+- إذا كتب الطالب أي شيء للإجابة (حتى لو خاطئ)، فهو ليس ناقصاً
+- **ممنوع منعاً باتاً**: ذكر سؤال في قسم "الناقص" وفي نفس الوقت وضع annotation له
+
+### 2. قاعدة عدم التناقض (NO CONTRADICTIONS):
+- إذا وضعت annotation بـ label="correct" → يجب ذكره في قسم "الصحيح" في feedback_ar
+- إذا وضعت annotation بـ label="mistake" → يجب ذكره في قسم "الخاطئ" في feedback_ar
+- إذا وضعت annotation بـ label="partial" → يجب ذكره في قسم "الجزئي" في feedback_ar
+- **ممنوع**: إجابة تظهر في annotations لكن تُذكر في قسم "الناقص"
+- **ممنوع**: إجابة بـ label="correct" لكن تُذكر في "الخاطئ"
+
+### 3. خطوة التحقق الإجبارية (قبل الإرسال):
+قبل أن ترسل JSON النهائي، تحقق من:
+✓ كل annotation موجود في القسم الصحيح من feedback_ar
+✓ لا يوجد أي سؤال مذكور في "الناقص" وله annotation
+✓ عدد العناصر في "الصحيح" = عدد annotations بـ label="correct"
+✓ عدد العناصر في "الخاطئ" = عدد annotations بـ label="mistake"
 
 ## مثال على عملية التقييم:
-1. اقرأ السؤال: "اختر الإجابة الصحيحة: الدائرة التي يتحقق فيها..."
+1. اقرأ السؤال: "س1-1: اختر الإجابة الصحيحة: الدائرة التي يتحقق فيها..."
 2. اقرأ من المنهج: الإجابة الصحيحة هي "التوازي" لأن...
-3. اقرأ إجابة الطالب: كتب "التوالي"
+3. اقرأ إجابة الطالب: كتب "التوالي" بجانب س1-1
 4. قارن: "التوالي" ≠ "التوازي" → خطأ
-5. النتيجة: label="mistake"
+5. النتيجة: {{"text": "التوالي", "label": "mistake"}}
+6. التحقق: السؤال مجاب (خطأ) لكن ليس ناقصاً!
 
 ## متطلبات الإخراج (JSON فقط):
 
@@ -138,7 +167,7 @@ class PhysicsGrader:
 • [قائمة فقط الإجابات التي label="partial"]
 
 **الناقص:**
-• [اذكر الأسئلة التي لم يجب عنها الطالب]
+• [فقط الأسئلة التي لا توجد لها إجابة نهائياً - إذا كتب الطالب أي شيء فليست ناقصة!]
 
 ## مثال كامل:
 
@@ -153,11 +182,12 @@ class PhysicsGrader:
   ]
 }}
 
-## تحذيرات نهائية:
-⚠️ **لا تناقض**: إذا كان annotation بـ label="correct" لا تذكره في قسم "الخاطئ"
-⚠️ **راجع مرتين**: تأكد أن feedback_ar يطابق annotations بالضبط
-⚠️ **انسخ بدقة**: النص يجب أن يكون مطابق 100% لما في الصورة
-⚠️ **اكتشف الناقص**: اذكر أي سؤال لم يجب عنه الطالب
+## 🚨 تحذيرات نهائية حرجة:
+⚠️ **ممنوع التناقض المطلق**: annotations و feedback_ar يجب أن يطابقان بعضهما 100%
+⚠️ **السؤال الناقص ≠ الإجابة الخاطئة**: إذا كتب إجابة (حتى خاطئة)، فليست ناقصة!
+⚠️ **راجع قبل الإرسال**: تأكد من قائمة التحقق أعلاه قبل إرسال JSON
+⚠️ **انسخ النص بدقة**: text في annotations يجب أن يكون نسخة دقيقة 100% من الصورة
+⚠️ **تحقق من كل قسم**: "الصحيح" و "الخاطئ" و "الجزئي" و "الناقص" يجب أن يطابق annotations
 """
         return prompt
     
@@ -189,17 +219,27 @@ class PhysicsGrader:
             # Build prompt
             system_prompt = self._build_system_prompt()
             
-            # Create request
-            logger.info(f"Sending request to {GEMINI_MODEL}...")
+            # Create request with curriculum PDFs
+            logger.info(f"Sending request to {GEMINI_MODEL} with curriculum...")
+            
+            # Build contents list with curriculum PDFs first
+            contents = [system_prompt]
+            
+            # Add curriculum PDFs
+            for category, file_obj in self.curriculum_files.items():
+                contents.append(file_obj)
+            
+            # Add question and answer  
+            contents.extend([
+                "الصورة التالية هي السؤال:",
+                question_file,
+                "والآن إليك إجابة الطالب:",
+                answer_file
+            ])
             
             response = self.client.models.generate_content(
                 model=GEMINI_MODEL,
-                contents=[
-                    system_prompt,
-                    question_file,
-                    "الصورة أعلاه هي السؤال. والآن إليك إجابة الطالب:",
-                    answer_file
-                ],
+                contents=contents,
                 config={
                     "temperature": 0.1,  # Low temperature for consistent grading
                     "response_mime_type": "application/json"
@@ -225,202 +265,7 @@ class PhysicsGrader:
         except Exception as e:
             logger.error(f"Grading error: {e}")
             raise
-    
-    def _load_curriculum(self) -> Dict:
-        """Load curriculum from JSON file"""
-        if not CURRICULUM_FILE.exists():
-            raise FileNotFoundError(
-                f"Curriculum file not found: {CURRICULUM_FILE}\n"
-                "Please run: python scripts/ingest_curriculum.py"
-            )
-        
-        with open(CURRICULUM_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    
-    def _build_curriculum_context(self) -> str:
-        """Build curriculum context string for the prompt"""
-        context_parts = []
-        
-        for category, data in self.curriculum.items():
-            context_parts.append(f"\n## {category}\n")
-            for page in data['pages']:
-                context_parts.append(f"### صفحة {page['page_num']}\n")
-                context_parts.append(page['text'])
-                context_parts.append("\n")
-        
-        return "\n".join(context_parts)
-    
-    def _build_system_prompt(self) -> str:
-        """Build the system prompt for grading"""
-        curriculum_context = self._build_curriculum_context()
-        
-        prompt = f"""أنت "المعلم" (Al-Muallim)، مُصحح فيزياء دقيق جداً ومتسق.
 
-## المنهج الدراسي (مرجع الإجابات):
-{curriculum_context}
-
-## التقييم المتوازن:
-- **10/10**: حل مثالي بدون أي أخطاء
-- **8-9/10**: حل ممتاز مع خطأ بسيط جداً
-- **7/10**: حل جيد جداً مع أخطاء قليلة أو أجزاء ناقصة
-- **6/10**: حل جيد لكن فيه عدة أخطاء
-- **4-5/10**: حل متوسط - الفكرة صحيحة لكن التنفيذ ضعيف
-- **2-3/10**: حل ضعيف مع أخطاء كثيرة
-- **0-1/10**: لا يوجد حل أو حل خاطئ تماماً
-
-## قواعد التقييم المهمة (اقرأها بعناية):
-1. **اقرأ السؤال بدقة** - اقرأ صورة السؤال أولاً لتفهم بالضبط ماذا يُطلب من الطالب
-2. **راجع المنهج** - تحقق من المنهج الدراسي أعلاه للإجابة الصحيحة
-3. **قارن بعناية** - قارن إجابة الطالب بالإجابة الصحيحة من المنهج
-4. **تحقق مرتين** - قبل أن تحكم على إجابة، راجعها مرة أخرى
-5. **اكتشف الأسئلة غير المجاب عنها** - اذكرها في feedback_ar
-6. **لا تناقض نفسك** - إذا كان النص في annotations بـ label="correct" فلا تذكره في قسم "الخاطئ" في feedback_ar
-7. **تحقق من المنهج بدقة** - قبل أن تعتبر إجابة خاطئة، تأكد أنها فعلاً تخالف المنهج
-8. **تقبل الاختلافات البسيطة** - إذا كانت الإجابة صحيحة بشكل عام حتى لو صياغتها مختلفة قليلاً، اعتبرها صحيحة
-
-## مثال على عملية التقييم:
-1. اقرأ السؤال: "اختر الإجابة الصحيحة: الدائرة التي يتحقق فيها..."
-2. اقرأ من المنهج: الإجابة الصحيحة هي "التوازي" لأن...
-3. اقرأ إجابة الطالب: كتب "التوالي"
-4. قارن: "التوالي" ≠ "التوازي" → خطأ
-5. النتيجة: label="mistake"
-
-## متطلبات الإخراج (JSON فقط):
-
-{{
-  "score": <رقم من 0 إلى {MAX_SCORE}>,
-  "feedback_ar": "<نقاط واضحة ومباشرة>",
-  "annotations": [
-    {{
-      "text": "<النص المكتوب - انسخه بدقة تامة>",
-      "label": "correct|mistake|partial|unclear"
-    }}
-  ]
-}}
-
-## تعليمات annotations (حرجة للغاية):
-
-### 1. انسخ النص بدقة:
-- اكتب النص **بالضبط** كما هو مكتوب في الصورة
-- لا تضف كلمات أو تحذف كلمات
-- انسخ حتى الأخطاء الإملائية
-- **مهم**: اكتب فقط نص الإجابة، لا تنسخ رقم السؤال
-
-### 2. مثال صحيح:
-إذا كان مكتوباً: "المقاومة والملف"
-✓ صحيح: {{"text": "المقاومة والملف", "label": "correct"}}
-✗ خاطئ: {{"text": "س1: المقاومة والملف", "label": "correct"}} (لا تضف رقم السؤال!)
-
-### 3. حدد label بدقة:
-- **correct**: صحيح 100%
-- **mistake**: خاطئ
-- **partial**: جزئياً صحيح
-- **unclear**: غير واضح ولا يمكن قراءته
-
-### 4. كل إجابة = annotation واحد:
-- كل سطر أو فقرة إجابة = عنصر منفصل
-- لا تدمج عدة أسطر في annotation واحد
-
-## شكل feedback_ar (يجب أن يطابق annotations):
-
-**الصحيح:**
-• [قائمة فقط الإجابات التي label="correct"]
-
-**الخاطئ:**
-• [قائمة فقط الإجابات التي label="mistake"]
-
-**الجزئي:**
-• [قائمة فقط الإجابات التي label="partial"]
-
-**الناقص:**
-• [اذكر الأسئلة التي لم يجب عنها الطالب]
-
-## مثال كامل:
-
-{{
-  "score": 7,
-  "feedback_ar": "**الصحيح:**\\n• تحديد العوامل المؤثرة على الممانعة\\n• استخدام قانون عامل النوعية\\n\\n**الخاطئ:**\\n• اختيار دائرة التوالي في س2-1 (الصحيح: التوازي)\\n\\n**الناقص:**\\n• السؤال 3-2 لم تتم الإجابة عليه",
-  "annotations": [
-    {{"text": "R, L, C, f", "label": "correct"}},
-    {{"text": "Qf = (1/R)√(L/C)", "label": "correct"}},
-    {{"text": "التوالي", "label": "mistake"}},
-    {{"text": "لأن المحث لا يستهلك طاقة", "label": "correct"}}
-  ]
-}}
-
-## تحذيرات نهائية:
-⚠️ **لا تناقض**: إذا كان annotation بـ label="correct" لا تذكره في قسم "الخاطئ"
-⚠️ **راجع مرتين**: تأكد أن feedback_ar يطابق annotations بالضبط
-⚠️ **انسخ بدقة**: النص يجب أن يكون مطابق 100% لما في الصورة
-⚠️ **اكتشف الناقص**: اذكر أي سؤال لم يجب عنه الطالب
-"""
-        return prompt
-    
-    def grade_answer(
-        self,
-        question_image_path: Path,
-        answer_image_path: Path
-    ) -> Dict:
-        """
-        Grade a student's answer using Gemini 3 Pro.
-        
-        Args:
-            question_image_path: Path to the question image
-            answer_image_path: Path to the student's answer image
-            
-        Returns:
-            Dictionary with score, feedback_ar, and annotations
-        """
-        logger.info("Starting grading process")
-        logger.info(f"Question: {question_image_path}")
-        logger.info(f"Answer: {answer_image_path}")
-        
-        try:
-            # Upload images
-            logger.info("Uploading images to Gemini...")
-            question_file = self.client.files.upload(file=str(question_image_path))
-            answer_file = self.client.files.upload(file=str(answer_image_path))
-            
-            # Build prompt
-            system_prompt = self._build_system_prompt()
-            
-            # Create request
-            logger.info(f"Sending request to {GEMINI_MODEL}...")
-            
-            response = self.client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=[
-                    system_prompt,
-                    question_file,
-                    "الصورة أعلاه هي السؤال. والآن إليك إجابة الطالب:",
-                    answer_file
-                ],
-                config={
-                    "temperature": 0.1,  # Low temperature for consistent grading
-                    "response_mime_type": "application/json"
-                }
-            )
-            
-            # Parse response
-            logger.info("Received response from Gemini")
-            result_text = response.text
-            
-            # Parse JSON
-            result = json.loads(result_text)
-            
-            logger.info(f"Grading complete. Score: {result.get('score', 'N/A')}/{MAX_SCORE}")
-            logger.info(f"Annotations: {len(result.get('annotations', []))}")
-            
-            return result
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            logger.error(f"Response text: {result_text}")
-            raise
-        except Exception as e:
-            logger.error(f"Grading error: {e}")
-            raise
-    
     def format_feedback_message(self, grading_result: Dict) -> str:
         """Format the grading result into a user-friendly message"""
         score = grading_result.get("score", 0)
