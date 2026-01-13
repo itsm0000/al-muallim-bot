@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: al-muallim-userbot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python userbot.py
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3-pro-preview
