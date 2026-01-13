@@ -210,7 +210,11 @@ class PhysicsGrader:
         answer_image_path: Path
     ) -> Dict:
         """
-        Grade a student's answer using Gemini 3 Pro.
+        Grade a student's answer using Gemini 3 Pro with DETERMINISTIC OCR-first approach.
+        
+        The key insight: We extract text FIRST using Google Cloud Vision OCR (deterministic),
+        then send the extracted TEXT to Gemini for grading. This ensures the same image
+        always produces the same grade.
         
         Args:
             question_image_path: Path to the question image
@@ -219,35 +223,45 @@ class PhysicsGrader:
         Returns:
             Dictionary with score, feedback_ar, and annotations
         """
-        logger.info("Starting grading process")
+        logger.info("Starting DETERMINISTIC grading process (OCR-first)")
         logger.info(f"Question: {question_image_path}")
         logger.info(f"Answer: {answer_image_path}")
         
         try:
-            # Upload images
-            logger.info("Uploading images to Gemini...")
-            question_file = self.client.files.upload(file=str(question_image_path))
-            answer_file = self.client.files.upload(file=str(answer_image_path))
+            # STEP 1: Extract text using Google Cloud Vision OCR (DETERMINISTIC)
+            from utils.ocr_detector import extract_full_text
             
-            # Build prompt
+            logger.info("Step 1: Extracting text via OCR (deterministic)...")
+            question_text = extract_full_text(question_image_path)
+            answer_text = extract_full_text(answer_image_path)
+            
+            logger.info(f"Question text extracted: {len(question_text)} chars")
+            logger.info(f"Answer text extracted: {len(answer_text)} chars")
+            
+            # Log first 200 chars for debugging
+            logger.debug(f"Question preview: {question_text[:200]}...")
+            logger.debug(f"Answer preview: {answer_text[:200]}...")
+            
+            # STEP 2: Build prompt with TEXT (not images) for deterministic grading
             system_prompt = self._build_system_prompt()
             
-            # Create request with curriculum PDFs
-            logger.info(f"Sending request to {GEMINI_MODEL} with curriculum...")
+            # Create request with curriculum PDFs + extracted text
+            logger.info(f"Step 2: Sending TEXT to {GEMINI_MODEL} for grading...")
             
             # Build contents list with curriculum PDFs first
             contents = [system_prompt]
             
-            # Add curriculum PDFs
+            # Add curriculum PDFs (we still need these for reference answers)
             for category, file_obj in self.curriculum_files.items():
                 contents.append(file_obj)
             
-            # Add question and answer  
+            # Add EXTRACTED TEXT instead of images (THIS IS THE KEY CHANGE!)
             contents.extend([
-                "الصورة التالية هي السؤال:",
-                question_file,
-                "والآن إليك إجابة الطالب:",
-                answer_file
+                "النص التالي هو نص السؤال (تم استخراجه بواسطة OCR):",
+                f"```\n{question_text}\n```",
+                "والآن إليك نص إجابة الطالب (تم استخراجه بواسطة OCR):",
+                f"```\n{answer_text}\n```",
+                "ملاحظة مهمة: هذا النص تم استخراجه آلياً من صورة بخط اليد. قد تكون هناك أخطاء بسيطة في القراءة."
             ])
             
             response = self.client.models.generate_content(

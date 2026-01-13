@@ -177,3 +177,56 @@ def find_text_box(text_boxes: List[Dict], search_text: str, min_similarity: floa
         logger.debug(f"Found match for '{search_text}': '{best_match['text']}' (score: {best_score:.2f})")
     
     return best_match
+
+
+def extract_full_text(image_path: Path) -> str:
+    """
+    Extract all text from an image using Google Cloud Vision OCR.
+    Returns a single string with all detected text, preserving line structure.
+    
+    This provides DETERMINISTIC text extraction - the same image will always
+    return the same text, enabling consistent grading.
+    
+    Args:
+        image_path: Path to the image file
+        
+    Returns:
+        String containing all detected text from the image
+    """
+    logger.info(f"Extracting full text from: {image_path}")
+    
+    try:
+        from google.cloud import vision
+        
+        client = get_vision_client()
+        
+        # Read image file
+        with open(image_path, "rb") as image_file:
+            content = image_file.read()
+        
+        image = vision.Image(content=content)
+        
+        # Use document_text_detection for better handwriting support
+        response = client.document_text_detection(
+            image=image,
+            image_context=vision.ImageContext(
+                language_hints=["ar", "en"]  # Arabic and English
+            )
+        )
+        
+        if response.error.message:
+            raise Exception(f"Vision API error: {response.error.message}")
+        
+        # Get the full text annotation
+        if response.full_text_annotation:
+            full_text = response.full_text_annotation.text
+            logger.info(f"Extracted {len(full_text)} characters of text")
+            return full_text.strip()
+        
+        logger.warning("No text detected in image")
+        return ""
+        
+    except Exception as e:
+        logger.error(f"Error extracting text: {e}")
+        raise
+

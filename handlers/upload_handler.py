@@ -18,6 +18,18 @@ logger = setup_logger("upload_handler")
 # Conversation states
 WAITING_FOR_QUESTION, WAITING_FOR_ANSWER = range(2)
 
+# CACHED GRADER INSTANCE - Upload PDFs ONCE, reuse forever
+_grader_instance = None
+
+def get_grader():
+    """Get or create cached PhysicsGrader instance (uploads PDFs only once!)"""
+    global _grader_instance
+    if _grader_instance is None:
+        logger.info("Creating PhysicsGrader instance (first time - uploading PDFs)...")
+        _grader_instance = PhysicsGrader()
+        logger.info("PhysicsGrader cached - will be reused for all future grading")
+    return _grader_instance
+
 async def start_grading(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Start the grading conversation"""
     await update.message.reply_text(
@@ -78,8 +90,8 @@ async def receive_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "المُعلم يستخدم الذكاء الاصطناعي لتحليل إجابتك بدقة."
         )
         
-        # Grade the answer
-        grader = PhysicsGrader()
+        # Grade the answer (uses CACHED grader - PDFs uploaded only once!)
+        grader = get_grader()
         question_image = Path(context.user_data['question_image'])
         
         grading_result = grader.grade_answer(question_image, answer_path)
