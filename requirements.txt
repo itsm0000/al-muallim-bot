@@ -3,4 +3,4 @@ google-genai
 pdfplumber
 Pillow
 python-dotenv
-easyocr
+google-cloud-vision
