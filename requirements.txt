@@ -4,3 +4,4 @@ pdfplumber
 Pillow
 python-dotenv
 google-cloud-vision
+telethon

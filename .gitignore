@@ -13,6 +13,13 @@ build/
 venv/
 env/
 
+# Telethon session files (SENSITIVE - contains login credentials)
+*.session
+*.session-journal
+
+# Google Cloud credentials
+gen-*.json
+
 # Logs
 *.log
 bot.log

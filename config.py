@@ -21,8 +21,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 # Google Cloud API Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# Gemini Model Configuration
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+# Gemini Model Configuration  
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-pro-preview")
 THINKING_LEVEL = os.getenv("THINKING_LEVEL", "high")
 
 # Grading Configuration
