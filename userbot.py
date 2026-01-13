@@ -43,6 +43,22 @@ API_ID = os.getenv("TELEGRAM_API_ID", "30619302")
 API_HASH = os.getenv("TELEGRAM_API_HASH", "a501dc4dd3e7e2288cdc3dc18ff9e3ce")
 SESSION_NAME = "teacher_session"
 
+# Load session from environment variable if available (for cloud deployment)
+def setup_session_from_env():
+    """Load session from TELEGRAM_SESSION env var if available"""
+    session_b64 = os.getenv("TELEGRAM_SESSION")
+    if session_b64:
+        import base64
+        session_path = Path(__file__).parent / f"{SESSION_NAME}.session"
+        if not session_path.exists():
+            logger.info("Loading session from TELEGRAM_SESSION environment variable...")
+            session_data = base64.b64decode(session_b64)
+            session_path.write_bytes(session_data)
+            logger.info("Session file created from environment variable")
+
+# Run session setup on import
+setup_session_from_env()
+
 # Parallel processing configuration
 NUM_WORKERS = 3  # Number of concurrent grading workers
 MAX_QUEUE_SIZE = 100  # Maximum pending jobs
