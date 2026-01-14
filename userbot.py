@@ -16,11 +16,12 @@ First run will prompt for phone number and verification code.
 """
 import os
 import sys
+import json
 import asyncio
 from pathlib import Path
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Set
 
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
@@ -42,6 +43,62 @@ logger = setup_logger("userbot")
 API_ID = os.getenv("TELEGRAM_API_ID", "30619302")
 API_HASH = os.getenv("TELEGRAM_API_HASH", "a501dc4dd3e7e2288cdc3dc18ff9e3ce")
 SESSION_NAME = "teacher_session"
+
+# File paths for persistent storage
+TEACHERS_FILE = Path(__file__).parent / "teachers.json"
+
+# Teacher IDs (users who can set quizzes but won't be graded)
+_teacher_ids: Set[int] = set()
+
+# State for waiting for quiz image
+_waiting_for_quiz: Set[int] = set()
+
+
+def load_teachers() -> Set[int]:
+    """Load teacher IDs from file"""
+    if TEACHERS_FILE.exists():
+        try:
+            with open(TEACHERS_FILE, 'r') as f:
+                data = json.load(f)
+                return set(data.get('teacher_ids', []))
+        except Exception as e:
+            logger.error(f"Error loading teachers: {e}")
+    return set()
+
+
+def save_teachers(teacher_ids: Set[int]):
+    """Save teacher IDs to file"""
+    try:
+        with open(TEACHERS_FILE, 'w') as f:
+            json.dump({'teacher_ids': list(teacher_ids)}, f)
+        logger.info(f"Saved {len(teacher_ids)} teachers")
+    except Exception as e:
+        logger.error(f"Error saving teachers: {e}")
+
+
+def add_teacher(teacher_id: int) -> bool:
+    """Add a teacher ID"""
+    global _teacher_ids
+    if teacher_id not in _teacher_ids:
+        _teacher_ids.add(teacher_id)
+        save_teachers(_teacher_ids)
+        return True
+    return False
+
+
+def remove_teacher(teacher_id: int) -> bool:
+    """Remove a teacher ID"""
+    global _teacher_ids
+    if teacher_id in _teacher_ids:
+        _teacher_ids.discard(teacher_id)
+        save_teachers(_teacher_ids)
+        return True
+    return False
+
+
+def is_teacher(user_id: int) -> bool:
+    """Check if a user is a teacher"""
+    return user_id in _teacher_ids
 
 # Load session from environment variable if available (for cloud deployment)
 def setup_session_from_env():
@@ -190,12 +247,16 @@ async def grading_worker(worker_id: int, queue: asyncio.Queue):
 
 async def main():
     """Main userbot function with parallel processing"""
-    global _client
+    global _client, _teacher_ids
     
     logger.info("=" * 50)
     logger.info("Starting Teacher Userbot (Parallel Processing Mode)")
     logger.info(f"Workers: {NUM_WORKERS} | Max Queue: {MAX_QUEUE_SIZE}")
     logger.info("=" * 50)
+    
+    # Load saved teachers
+    _teacher_ids = load_teachers()
+    logger.info(f"Loaded {len(_teacher_ids)} teachers from file")
     
     # Create job queue
     grading_queue = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)
@@ -213,10 +274,106 @@ async def main():
         
         sender = await event.get_sender()
         sender_name = sender.first_name if sender else "Unknown"
+        sender_id = sender.id if sender else 0
+        me = await _client.get_me()
+        my_id = me.id
         
-        # Check if message has a photo (student answer)
+        # Check if this is the bot owner (main teacher)
+        is_owner = (sender_id == my_id)
+        
+        # Handle text commands
+        if event.raw_text:
+            text = event.raw_text.strip().lower()
+            
+            # /quiz command - set quiz image (owner or teachers)
+            if text == "/quiz" or text == "/سؤال":
+                if is_owner or is_teacher(sender_id):
+                    _waiting_for_quiz.add(sender_id)
+                    await event.respond("📷 أرسل صورة السؤال لتعيينها كاختبار نشط.\nSend the quiz image to set it as active.")
+                    logger.info(f"{sender_name} initiated quiz setup")
+                return
+            
+            # /addteacher command (owner only)
+            if text.startswith("/addteacher") or text.startswith("/اضف_معلم"):
+                if not is_owner:
+                    await event.respond("⛔ فقط المالك يمكنه إضافة معلمين.")
+                    return
+                await event.respond("📨 أرسل لي رسالة مُعاد توجيهها من المعلم الذي تريد إضافته.\nForward a message from the teacher you want to add.")
+                logger.info("Waiting for forwarded message to add teacher")
+                return
+            
+            # /removeteacher command (owner only)  
+            if text.startswith("/removeteacher") or text.startswith("/حذف_معلم"):
+                if not is_owner:
+                    await event.respond("⛔ فقط المالك يمكنه حذف معلمين.")
+                    return
+                await event.respond("📨 أرسل لي رسالة مُعاد توجيهها من المعلم الذي تريد حذفه.\nForward a message from the teacher you want to remove.")
+                return
+            
+            # /listteachers command (owner only)
+            if text == "/listteachers" or text == "/المعلمين":
+                if not is_owner:
+                    return
+                if _teacher_ids:
+                    teacher_list = "\n".join([f"• {tid}" for tid in _teacher_ids])
+                    await event.respond(f"👥 المعلمون المسجلون:\n{teacher_list}")
+                else:
+                    await event.respond("📭 لا يوجد معلمون مسجلون بعد.")
+                return
+            
+            # /status command (owner only)
+            if text == "/status" or text == "/حالة":
+                if not is_owner:
+                    return
+                quiz = get_active_quiz()
+                quiz_status = f"✅ {quiz.name}" if quiz else "❌ لا يوجد"
+                teachers_count = len(_teacher_ids)
+                await event.respond(
+                    f"📊 حالة البوت:\n"
+                    f"• الاختبار النشط: {quiz_status}\n"
+                    f"• عدد المعلمين: {teachers_count}\n"
+                    f"• العمال النشطون: {NUM_WORKERS}"
+                )
+                return
+        
+        # Handle forwarded messages (for adding teachers)
+        if event.forward and event.forward.sender_id:
+            forwarded_id = event.forward.sender_id
+            forwarded_name = "Unknown"
+            try:
+                forwarded_user = await _client.get_entity(forwarded_id)
+                forwarded_name = forwarded_user.first_name
+            except:
+                pass
+            
+            if add_teacher(forwarded_id):
+                await event.respond(f"✅ تمت إضافة المعلم: {forwarded_name} (ID: {forwarded_id})")
+                logger.info(f"Added teacher: {forwarded_name} ({forwarded_id})")
+            else:
+                await event.respond(f"ℹ️ المعلم موجود بالفعل: {forwarded_name}")
+            return
+        
+        # Handle photos
         if event.photo:
-            logger.info(f"Received photo from {sender_name} (ID: {sender.id})")
+            logger.info(f"Received photo from {sender_name} (ID: {sender_id})")
+            
+            # Check if this is a quiz image setup
+            if sender_id in _waiting_for_quiz:
+                _waiting_for_quiz.discard(sender_id)
+                
+                # Save quiz image
+                quiz_path = TEMP_IMAGES_DIR / f"quiz_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                await _client.download_media(event.photo, quiz_path)
+                set_active_quiz(quiz_path)
+                
+                await event.respond(f"✅ تم تعيين الاختبار بنجاح!\nQuiz set successfully!")
+                logger.info(f"Quiz set by {sender_name}: {quiz_path}")
+                return
+            
+            # Skip grading for teachers
+            if is_teacher(sender_id):
+                logger.info(f"Ignoring photo from teacher: {sender_name}")
+                return
             
             # Check if we have an active quiz
             if not get_active_quiz():
@@ -224,14 +381,14 @@ async def main():
                 return
             
             # Download the photo
-            answer_path = TEMP_IMAGES_DIR / f"student_{sender.id}_{event.id}.jpg"
+            answer_path = TEMP_IMAGES_DIR / f"student_{sender_id}_{event.id}.jpg"
             await _client.download_media(event.photo, answer_path)
             logger.info(f"Downloaded answer to: {answer_path}")
             
             # Create grading job and add to queue
             job = GradingJob(
                 chat_id=event.chat_id,
-                sender_id=sender.id,
+                sender_id=sender_id,
                 sender_name=sender_name,
                 answer_path=answer_path,
                 event_id=event.id
@@ -244,11 +401,6 @@ async def main():
                 logger.info(f"Job queued for {sender_name} (Queue size: {queue_size})")
             except asyncio.QueueFull:
                 logger.error(f"Queue full! Cannot process {sender_name}'s answer")
-        
-        # Check for quiz setup command
-        elif event.raw_text and event.raw_text.startswith("/setquiz"):
-            logger.info("Quiz setup command received - waiting for quiz image...")
-            await event.reply("📷 أرسل صورة السؤال لتعيينها كاختبار نشط.")
     
     # Start the client
     await _client.start()
