@@ -123,8 +123,8 @@ MAX_QUEUE_SIZE = 100  # Maximum pending jobs
 # Global grader instance (cached)
 _grader = None
 
-# Active quiz question path (teacher sets this)
-_active_quiz_path = None
+# Per-teacher quiz paths (each teacher has their own quiz)
+_teacher_quizzes: dict[int, Path] = {}
 
 # Global Telegram client (for workers to use)
 _client = None
@@ -138,6 +138,8 @@ class GradingJob:
     sender_name: str
     answer_path: Path
     event_id: int
+    teacher_id: int  # The teacher who should receive the graded result
+    quiz_path: Path  # The quiz to use for grading
 
 
 def get_grader():
@@ -150,26 +152,36 @@ def get_grader():
     return _grader
 
 
+def set_teacher_quiz(teacher_id: int, image_path: Path):
+    """Set the quiz for a specific teacher"""
+    global _teacher_quizzes
+    _teacher_quizzes[teacher_id] = image_path
+    logger.info(f"Quiz set for teacher {teacher_id}: {image_path}")
+
+
+def get_teacher_quiz(teacher_id: int) -> Path:
+    """Get the quiz for a specific teacher"""
+    return _teacher_quizzes.get(teacher_id)
+
+
 def set_active_quiz(image_path: Path):
-    """Set the active quiz question image"""
-    global _active_quiz_path
-    _active_quiz_path = image_path
-    logger.info(f"Active quiz set to: {image_path}")
+    """Set the active quiz question image (for owner)"""
+    # This is now an alias that sets quiz for teacher ID 0 (owner fallback)
+    set_teacher_quiz(0, image_path)
 
 
 def get_active_quiz() -> Path:
-    """Get the current active quiz question path"""
-    return _active_quiz_path
+    """Get the current active quiz question path (owner's quiz)"""
+    return _teacher_quizzes.get(0)
 
 
-async def grade_student_answer(answer_path: Path) -> tuple:
+async def grade_student_answer(answer_path: Path, quiz_path: Path) -> tuple:
     """
-    Grade a student's answer using the active quiz.
+    Grade a student's answer using the specified quiz.
     
     Returns:
         Tuple of (annotated_image_path, feedback_message, score)
     """
-    quiz_path = get_active_quiz()
     if not quiz_path or not quiz_path.exists():
         raise Exception("No active quiz set! Teacher must set a quiz first.")
     
@@ -211,19 +223,22 @@ async def grading_worker(worker_id: int, queue: asyncio.Queue):
             # Get job from queue (blocks until available)
             job: GradingJob = await queue.get()
             
-            logger.info(f"Worker {worker_id} processing job for {job.sender_name}")
+            logger.info(f"Worker {worker_id} processing job for {job.sender_name} (teacher: {job.teacher_id})")
             
             try:
-                # Grade the answer
-                annotated_path, feedback, score = await grade_student_answer(job.answer_path)
+                # Grade the answer using the teacher's quiz
+                annotated_path, feedback, score = await grade_student_answer(job.answer_path, job.quiz_path)
                 
-                # Create scheduled message (draft)
+                # Create scheduled message (draft) - send to the TEACHER, not the student
                 schedule_time = datetime.now() + timedelta(days=365)
                 
+                # Include student name in the caption
+                caption = f"🎯 {job.sender_name}: {score}/10"
+                
                 await _client.send_file(
-                    job.chat_id,
+                    job.teacher_id,  # Send to teacher, not original chat
                     annotated_path,
-                    caption=f"🎯 النتيجة: {score}/10",
+                    caption=caption,
                     schedule=schedule_time
                 )
                 
@@ -357,26 +372,74 @@ async def main():
         if event.photo:
             logger.info(f"Received photo from {sender_name} (ID: {sender_id})")
             
-            # Check if this is a quiz image setup
+            # Check if this is a quiz image setup (from owner or registered teacher)
             if sender_id in _waiting_for_quiz:
                 _waiting_for_quiz.discard(sender_id)
                 
-                # Save quiz image
-                quiz_path = TEMP_IMAGES_DIR / f"quiz_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                # Save quiz image for THIS teacher
+                quiz_path = TEMP_IMAGES_DIR / f"quiz_{sender_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 await _client.download_media(event.photo, quiz_path)
-                set_active_quiz(quiz_path)
                 
-                await event.respond(f"✅ تم تعيين الاختبار بنجاح!\nQuiz set successfully!")
-                logger.info(f"Quiz set by {sender_name}: {quiz_path}")
+                # Set quiz for this specific teacher (or owner via ID 0 mapping)
+                teacher_quiz_id = sender_id if is_teacher(sender_id) else my_id
+                set_teacher_quiz(teacher_quiz_id, quiz_path)
+                
+                await event.respond(f"✅ تم تعيين الاختبار بنجاح!\nQuiz set successfully for you!")
+                logger.info(f"Quiz set by {sender_name} (ID: {teacher_quiz_id}): {quiz_path}")
                 return
             
-            # Skip grading for teachers
+            # If this is a registered teacher sending a photo, it might be a student answer they're forwarding
+            # Check if the message is forwarded - this is how teachers submit student answers
+            if event.forward and event.forward.sender_id:
+                forwarded_from_id = event.forward.sender_id
+                forwarded_from_name = "Student"
+                try:
+                    forwarded_user = await _client.get_entity(forwarded_from_id)
+                    forwarded_from_name = forwarded_user.first_name or "Student"
+                except:
+                    pass
+                
+                # The sender (teacher) is submitting a student's answer for grading
+                teacher_quiz_id = sender_id if is_teacher(sender_id) else my_id
+                quiz_path = get_teacher_quiz(teacher_quiz_id) or get_teacher_quiz(my_id)
+                
+                if not quiz_path:
+                    await event.respond("⚠️ لم يتم تعيين اختبار بعد! استخدم /quiz أولاً.\nNo quiz set! Use /quiz first.")
+                    return
+                
+                # Download the forwarded photo
+                answer_path = TEMP_IMAGES_DIR / f"student_{forwarded_from_id}_{event.id}.jpg"
+                await _client.download_media(event.photo, answer_path)
+                logger.info(f"Downloaded forwarded answer from {forwarded_from_name} to: {answer_path}")
+                
+                # Create grading job - results go back to the teacher who forwarded
+                job = GradingJob(
+                    chat_id=event.chat_id,
+                    sender_id=forwarded_from_id,
+                    sender_name=forwarded_from_name,
+                    answer_path=answer_path,
+                    event_id=event.id,
+                    teacher_id=sender_id,  # Send result back to the teacher
+                    quiz_path=quiz_path
+                )
+                
+                try:
+                    grading_queue.put_nowait(job)
+                    logger.info(f"Job queued: {forwarded_from_name}'s answer for teacher {sender_name}")
+                    await event.respond(f"📥 تم استلام إجابة {forwarded_from_name}، جاري التصحيح...")
+                except asyncio.QueueFull:
+                    logger.error(f"Queue full!")
+                    await event.respond("⚠️ النظام مشغول، حاول مرة أخرى لاحقاً.")
+                return
+            
+            # Skip grading for direct photos from teachers (not forwarded)
             if is_teacher(sender_id):
-                logger.info(f"Ignoring photo from teacher: {sender_name}")
+                logger.info(f"Ignoring direct (non-forwarded) photo from teacher: {sender_name}")
                 return
             
-            # Check if we have an active quiz
-            if not get_active_quiz():
+            # Direct photo from a student to the owner's account
+            quiz_path = get_teacher_quiz(my_id)
+            if not quiz_path:
                 logger.warning("No active quiz set - ignoring photo")
                 return
             
@@ -385,13 +448,15 @@ async def main():
             await _client.download_media(event.photo, answer_path)
             logger.info(f"Downloaded answer to: {answer_path}")
             
-            # Create grading job and add to queue
+            # Create grading job - results go to owner
             job = GradingJob(
                 chat_id=event.chat_id,
                 sender_id=sender_id,
                 sender_name=sender_name,
                 answer_path=answer_path,
-                event_id=event.id
+                event_id=event.id,
+                teacher_id=my_id,
+                quiz_path=quiz_path
             )
             
             # Add to queue (non-blocking)
