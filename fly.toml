@@ -1,7 +1,7 @@
 # fly.toml - Fly.io configuration for Al-Muallim Telegram Bot
 # This is a worker process (not a web server), so we disable HTTP services
 
-app = "al-muallim-bot"
+# App name is set by Fly.io automatically
 primary_region = "fra"  # Frankfurt - close to Saudi Arabia
 
 [build]
