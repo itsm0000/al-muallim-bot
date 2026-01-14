@@ -1,0 +1,23 @@
+# fly.toml - Fly.io configuration for Al-Muallim Telegram Bot
+# This is a worker process (not a web server), so we disable HTTP services
+
+app = "al-muallim-bot"
+primary_region = "fra"  # Frankfurt - close to Saudi Arabia
+
+[build]
+  builder = "paketobuildpacks/builder:base"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+# No HTTP services - this is a background worker
+# The bot runs continuously without exposing any ports
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
+
+# Process configuration - run as worker
+[processes]
+  worker = "python userbot.py"
