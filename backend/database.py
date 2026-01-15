@@ -67,6 +67,48 @@ class PendingAuth(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class MidtermConfig(Base):
+    """
+    Midterm exam configuration per teacher.
+    
+    When is_active=True, the bot operates in midterm mode:
+    - Scores are out of 100 total
+    - Each question worth (100 / total_questions) points
+    - Running totals are tracked per student
+    """
+    __tablename__ = "midterm_configs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), unique=True)
+    is_active = Column(Boolean, default=False)  # True = midterm mode, False = quiz mode
+    total_questions = Column(Integer, default=6)  # Number of questions in the midterm
+    total_marks = Column(Integer, default=100)  # Total marks (usually 100)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class StudentProgress(Base):
+    """
+    Track running totals per student per teacher during midterm exams.
+    
+    Each time a student submits an answer, this record is updated with:
+    - Which question(s) they answered
+    - Their score on each question
+    - Running total so far
+    """
+    __tablename__ = "student_progress"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    teacher_id = Column(Integer, ForeignKey("teachers.id"))
+    student_telegram_id = Column(Integer)  # Telegram user ID of the student
+    student_name = Column(String, nullable=True)
+    questions_answered = Column(Text, default="{}")  # JSON: {"Q1": 20, "Q2": 25, ...}
+    total_score = Column(Integer, default=0)
+    questions_count = Column(Integer, default=0)  # Number of questions answered
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 async def init_db():
     """Create all tables"""
     async with engine.begin() as conn:

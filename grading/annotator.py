@@ -1,16 +1,179 @@
 """Image Annotation Module
 
-Uses Pillow to draw bounding boxes on student answer images based on AI grading feedback.
+Hand-drawn style annotations using Bezier curves with pressure simulation.
+Blue checkmarks that look natural and teacher-like.
 """
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import sys
+import math
+import random
 
 sys.path.append(str(Path(__file__).parent.parent))
-from config import ANNOTATION_COLORS
 from utils.logger import setup_logger
 
 logger = setup_logger("annotator")
+
+# Hand-drawn annotation color (bright blue like teacher's pen)
+HANDDRAWN_COLOR = (59, 158, 255)  # #3B9EFF
+
+
+def bezier_point(t: float, p0: tuple, p1: tuple, p2: tuple) -> tuple:
+    """Calculate point on quadratic Bezier curve at parameter t"""
+    x = (1-t)**2 * p0[0] + 2*(1-t)*t * p1[0] + t**2 * p2[0]
+    y = (1-t)**2 * p0[1] + 2*(1-t)*t * p1[1] + t**2 * p2[1]
+    return (x, y)
+
+
+def draw_bezier_with_pressure(draw: ImageDraw, p0: tuple, p1: tuple, p2: tuple, 
+                               base_width: int = 8, steps: int = 30):
+    """
+    Draw a Bezier curve with variable width to simulate pen pressure.
+    
+    Pressure profile: thick at start -> thin in middle -> thick at end
+    This mimics how a teacher draws a checkmark with pen pressure.
+    """
+    points = []
+    for i in range(steps + 1):
+        t = i / steps
+        point = bezier_point(t, p0, p1, p2)
+        points.append(point)
+    
+    # Draw line segments with varying width
+    for i in range(len(points) - 1):
+        t = i / (len(points) - 1)
+        
+        # Pressure curve: thick at ends, thin in middle
+        # Using sine curve for smooth pressure variation
+        pressure = 0.4 + 0.6 * (math.sin(t * math.pi) ** 0.5)
+        width = max(3, int(base_width * pressure))
+        
+        # Add slight jitter for organic feel
+        jitter_x = random.uniform(-1, 1) * 0.5
+        jitter_y = random.uniform(-1, 1) * 0.5
+        
+        start = (points[i][0] + jitter_x, points[i][1] + jitter_y)
+        end = (points[i+1][0] + jitter_x, points[i+1][1] + jitter_y)
+        
+        draw.line([start, end], fill=HANDDRAWN_COLOR, width=width)
+
+
+def draw_handdrawn_checkmark(draw: ImageDraw, bbox: list, scale: float = 1.0):
+    """
+    Draw a natural-looking hand-drawn checkmark that spans across the answer region.
+    
+    The checkmark has two strokes:
+    1. Short downward stroke (bottom of the check)
+    2. Long upward sweep (the main check)
+    
+    Args:
+        draw: ImageDraw object
+        bbox: [x_min, y_min, x_max, y_max] of the answer region
+        scale: Scale factor for the checkmark size
+    """
+    x_min, y_min, x_max, y_max = bbox
+    width = x_max - x_min
+    height = y_max - y_min
+    
+    # Calculate checkmark dimensions (span most of the answer region)
+    check_width = min(width * 0.8, height * 1.2) * scale
+    check_height = min(height * 0.9, width * 0.6) * scale
+    
+    # Position: slightly offset from center toward left
+    center_x = x_min + width * 0.4
+    center_y = y_min + height * 0.5
+    
+    # Key points of the checkmark
+    # Start point (top of short stroke)
+    start_x = center_x - check_width * 0.15
+    start_y = center_y - check_height * 0.1
+    
+    # Bottom point (where the two strokes meet)
+    bottom_x = center_x
+    bottom_y = center_y + check_height * 0.4
+    
+    # End point (top right of the long sweep)
+    end_x = center_x + check_width * 0.5
+    end_y = center_y - check_height * 0.5
+    
+    # Add randomness for natural look
+    jitter = lambda: random.uniform(-3, 3)
+    
+    # Stroke 1: Short downward stroke
+    p0 = (start_x + jitter(), start_y + jitter())
+    p1 = (start_x - 5 + jitter(), (start_y + bottom_y) / 2 + jitter())
+    p2 = (bottom_x + jitter(), bottom_y + jitter())
+    draw_bezier_with_pressure(draw, p0, p1, p2, base_width=10, steps=20)
+    
+    # Stroke 2: Long upward sweep
+    p0 = (bottom_x + jitter(), bottom_y + jitter())
+    p1 = ((bottom_x + end_x) / 2 + jitter(), (bottom_y + end_y) / 2 - check_height * 0.1 + jitter())
+    p2 = (end_x + jitter(), end_y + jitter())
+    draw_bezier_with_pressure(draw, p0, p1, p2, base_width=12, steps=35)
+
+
+def draw_handdrawn_x(draw: ImageDraw, bbox: list, scale: float = 1.0):
+    """
+    Draw a natural-looking hand-drawn X mark for wrong answers.
+    
+    Args:
+        draw: ImageDraw object
+        bbox: [x_min, y_min, x_max, y_max] of the answer region
+        scale: Scale factor
+    """
+    x_min, y_min, x_max, y_max = bbox
+    width = x_max - x_min
+    height = y_max - y_min
+    
+    # X dimensions (smaller than checkmark)
+    x_size = min(width * 0.4, height * 0.6, 80) * scale
+    
+    # Center position
+    center_x = x_min + width * 0.3
+    center_y = y_min + height * 0.5
+    
+    jitter = lambda: random.uniform(-2, 2)
+    
+    # First stroke: top-left to bottom-right
+    p0 = (center_x - x_size/2 + jitter(), center_y - x_size/2 + jitter())
+    p1 = (center_x + jitter() * 2, center_y + jitter() * 2)
+    p2 = (center_x + x_size/2 + jitter(), center_y + x_size/2 + jitter())
+    draw_bezier_with_pressure(draw, p0, p1, p2, base_width=8, steps=20)
+    
+    # Second stroke: top-right to bottom-left
+    p0 = (center_x + x_size/2 + jitter(), center_y - x_size/2 + jitter())
+    p1 = (center_x + jitter() * 2, center_y + jitter() * 2)
+    p2 = (center_x - x_size/2 + jitter(), center_y + x_size/2 + jitter())
+    draw_bezier_with_pressure(draw, p0, p1, p2, base_width=8, steps=20)
+
+
+def draw_handdrawn_partial(draw: ImageDraw, bbox: list, scale: float = 1.0):
+    """
+    Draw a curved line/squiggle for partial answers (half-credit).
+    
+    Args:
+        draw: ImageDraw object
+        bbox: [x_min, y_min, x_max, y_max] of the answer region
+        scale: Scale factor
+    """
+    x_min, y_min, x_max, y_max = bbox
+    width = x_max - x_min
+    height = y_max - y_min
+    
+    # Wavy line dimensions
+    wave_width = min(width * 0.5, 100) * scale
+    wave_height = min(height * 0.3, 40) * scale
+    
+    center_x = x_min + width * 0.35
+    center_y = y_min + height * 0.5
+    
+    jitter = lambda: random.uniform(-2, 2)
+    
+    # Draw a wavy underline with a small checkmark hook
+    p0 = (center_x - wave_width/2 + jitter(), center_y + jitter())
+    p1 = (center_x + jitter(), center_y - wave_height/2 + jitter())
+    p2 = (center_x + wave_width/2 + jitter(), center_y - wave_height + jitter())
+    draw_bezier_with_pressure(draw, p0, p1, p2, base_width=7, steps=25)
 
 def merge_nearby_boxes(ocr_boxes: list, vertical_threshold: int = 30, horizontal_threshold: int = 50) -> list:
     """
@@ -80,15 +243,19 @@ def merge_box_group(boxes: list) -> dict:
     }
 
 
-def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: int = None, output_path: Path = None) -> Path:
+def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: int = None, 
+                               max_score: int = 10, running_total: tuple = None, 
+                               output_path: Path = None) -> Path:
     """
-    Draw bounding boxes on image using OCR-detected text boxes matched with AI grading.
+    Draw hand-drawn style annotations on image using OCR-detected text boxes.
     
     Args:
         image_path: Path to the student's answer image
         text_annotations: List of text-based annotations from AI:
                          [{"text": "V = I × R", "label": "correct|mistake|partial|unclear"}]
-        score: Optional score to display in a circle
+        score: Score for this question
+        max_score: Maximum score for this question (default 10, can be 25 for midterms)
+        running_total: Optional tuple of (current_total, max_total) for midterm mode
         output_path: Optional custom output path
         
     Returns:
@@ -108,74 +275,17 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         ocr_boxes = detect_text_boxes(image_path)
         logger.info(f"OCR detected {len(ocr_boxes)} text boxes")
         
-        # Draw score circle in top-left corner if score is provided
+        # Draw score circle(s) in top-left corner
         if score is not None:
-            circle_radius = 90  # Larger circle for better visibility
-            circle_center = (circle_radius + 20, circle_radius + 20)
-            
-            # Draw outer circle (background)
-            draw.ellipse(
-                [
-                    (circle_center[0] - circle_radius, circle_center[1] - circle_radius),
-                    (circle_center[0] + circle_radius, circle_center[1] + circle_radius)
-                ],
-                fill='white',
-                outline='black',
-                width=5
-            )
-            
-            # Draw score text - try multiple fonts that work on different systems
-            font = None
-            font_size = 72
-            font_options = [
-                "arial.ttf",           # Windows
-                "Arial.ttf",           # Windows (case variant)
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux (common)
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Linux (Ubuntu)
-                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",  # Linux (Arch)
-                "DejaVuSans-Bold.ttf",  # Fallback name
-            ]
-            for font_path in font_options:
-                try:
-                    font = ImageFont.truetype(font_path, font_size)
-                    logger.info(f"Using font: {font_path} at size {font_size}")
-                    break
-                except (OSError, IOError):
-                    continue
-            
-            if font is None:
-                # If no font found, use default but scale up
-                font = ImageFont.load_default()
-                logger.warning("Using default font - score may appear small")
-            
-            score_text = f"{score}/10"
-            bbox = draw.textbbox((0, 0), score_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            text_position = (
-                circle_center[0] - text_width // 2,
-                circle_center[1] - text_height // 2
-            )
-            draw.text(text_position, score_text, fill='black', font=font)
+            _draw_score_circles(draw, score, max_score, running_total)
         
         # Group nearby OCR boxes into answer regions
         logger.info(f"Merging {len(ocr_boxes)} OCR boxes into answer regions...")
         merged_boxes = merge_nearby_boxes(ocr_boxes, vertical_threshold=30, horizontal_threshold=50)
         logger.info(f"Merged into {len(merged_boxes)} answer regions")
         
-        # Extract mistake keywords from annotations
-        mistake_keywords = []
-        for annotation in text_annotations:
-            if annotation.get("label") == "mistake":
-                text = annotation.get("text", "")
-                if text:
-                    # Extract key words (split by spaces)
-                    words = text.split()
-                    mistake_keywords.extend(words)
-        
-        logger.info(f"Mistake keywords: {mistake_keywords}")
-        
-        # Draw symbols instead of boxes
+        # Draw hand-drawn marks for each answer region
+        annotations_drawn = 0
         for idx, merged_box in enumerate(merged_boxes):
             bbox = merged_box["bbox"]  # [x_min, y_min, x_max, y_max]
             merged_text = merged_box["text"]
@@ -195,76 +305,18 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
             if label == "unclear":
                 continue
             
-            # Determine color
-            color_map = {
-                "correct": "green",
-                "mistake": "red",
-                "partial": "yellow"
-            }
-            
-            color_key = color_map.get(label, "green")
-            color = ANNOTATION_COLORS.get(color_key, "green")
-            
-            # Calculate center position of the answer region
-            center_x = (bbox[0] + bbox[2]) // 2
-            center_y = (bbox[1] + bbox[3]) // 2
-            
-            # Draw background circle
-            circle_radius = 25
-            draw.ellipse(
-                [
-                    (center_x - circle_radius, center_y - circle_radius),
-                    (center_x + circle_radius, center_y + circle_radius)
-                ],
-                fill='white',
-                outline=color,
-                width=3
-            )
-            
-            # Draw the symbol as shapes
+            # Draw hand-drawn mark based on label
             if label == "correct":
-                # Draw checkmark as two lines
-                # Short vertical line
-                draw.line(
-                    [(center_x - 8, center_y), (center_x - 3, center_y + 10)],
-                    fill=color,
-                    width=4
-                )
-                # Longer diagonal line
-                draw.line(
-                    [(center_x - 3, center_y + 10), (center_x + 12, center_y - 8)],
-                    fill=color,
-                    width=4
-                )
+                draw_handdrawn_checkmark(draw, bbox, scale=1.0)
             elif label == "mistake":
-                # Draw X as two diagonal lines
-                draw.line(
-                    [(center_x - 10, center_y - 10), (center_x + 10, center_y + 10)],
-                    fill=color,
-                    width=4
-                )
-                draw.line(
-                    [(center_x + 10, center_y - 10), (center_x - 10, center_y + 10)],
-                    fill=color,
-                    width=4
-                )
+                draw_handdrawn_x(draw, bbox, scale=1.0)
             elif label == "partial":
-                # Draw exclamation mark
-                # Top line
-                draw.line(
-                    [(center_x, center_y - 10), (center_x, center_y + 2)],
-                    fill=color,
-                    width=4
-                )
-                # Bottom dot
-                draw.ellipse(
-                    [(center_x - 2, center_y + 6), (center_x + 2, center_y + 10)],
-                    fill=color
-                )
+                draw_handdrawn_partial(draw, bbox, scale=1.0)
             
-            logger.debug(f"Drew {label} symbol for '{merged_text[:30]}...'")
+            annotations_drawn += 1
+            logger.debug(f"Drew hand-drawn {label} for '{merged_text[:30]}...'")
         
-        logger.info(f"Successfully drew {len(merged_boxes)} answer symbols")
+        logger.info(f"Successfully drew {annotations_drawn} hand-drawn annotations")
         
         # Save annotated image
         if output_path is None:
@@ -279,30 +331,124 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         logger.error(f"Error annotating image: {e}")
         raise
 
+
+def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10, 
+                        running_total: tuple = None):
+    """
+    Draw score circle(s) in the top-left corner.
+    
+    For midterm mode, draws two circles:
+    - Circle 1: This question's score (e.g., "20/25")
+    - Circle 2: Running total (e.g., "60/100")
+    
+    Args:
+        draw: ImageDraw object
+        score: Score for this question
+        max_score: Maximum score for this question
+        running_total: Optional tuple (current_total, max_total) for midterm mode
+    """
+    circle_radius = 90
+    circle_center = (circle_radius + 20, circle_radius + 20)
+    
+    # Load font
+    font = _get_score_font(72)
+    small_font = _get_score_font(48)
+    
+    # Draw main score circle
+    draw.ellipse(
+        [
+            (circle_center[0] - circle_radius, circle_center[1] - circle_radius),
+            (circle_center[0] + circle_radius, circle_center[1] + circle_radius)
+        ],
+        fill='white',
+        outline=HANDDRAWN_COLOR,
+        width=5
+    )
+    
+    # Draw score text
+    score_text = f"{score}/{max_score}"
+    bbox = draw.textbbox((0, 0), score_text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    text_position = (
+        circle_center[0] - text_width // 2,
+        circle_center[1] - text_height // 2
+    )
+    draw.text(text_position, score_text, fill=HANDDRAWN_COLOR, font=font)
+    
+    # Draw running total circle if provided (for midterm mode)
+    if running_total is not None:
+        current_total, max_total = running_total
+        
+        # Position below main circle
+        total_center = (circle_center[0], circle_center[1] + circle_radius * 2 + 30)
+        total_radius = 70
+        
+        draw.ellipse(
+            [
+                (total_center[0] - total_radius, total_center[1] - total_radius),
+                (total_center[0] + total_radius, total_center[1] + total_radius)
+            ],
+            fill='white',
+            outline=HANDDRAWN_COLOR,
+            width=4
+        )
+        
+        total_text = f"{current_total}/{max_total}"
+        bbox = draw.textbbox((0, 0), total_text, font=small_font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_position = (
+            total_center[0] - text_width // 2,
+            total_center[1] - text_height // 2
+        )
+        draw.text(text_position, total_text, fill=HANDDRAWN_COLOR, font=small_font)
+
+
+def _get_score_font(size: int) -> ImageFont:
+    """Get font for score display, trying multiple system fonts."""
+    font_options = [
+        "arial.ttf",           # Windows
+        "Arial.ttf",           # Windows (case variant)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux (common)
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Linux (Ubuntu)
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",  # Linux (Arch)
+        "DejaVuSans-Bold.ttf",  # Fallback name
+    ]
+    
+    for font_path in font_options:
+        try:
+            return ImageFont.truetype(font_path, size)
+        except (OSError, IOError):
+            continue
+    
+    # Fallback to default
+    logger.warning("Using default font - score may appear small")
+    return ImageFont.load_default()
+
 def create_color_legend(width: int = 300, height: int = 150) -> Image:
     """
-    Create a small legend image explaining the color codes.
+    Create a small legend image explaining the hand-drawn marks.
     
     Returns:
-        PIL Image with color legend
+        PIL Image with legend
     """
     img = Image.new('RGB', (width, height), color='white')
     draw = ImageDraw.Draw(img)
     
+    # All marks are now blue hand-drawn style
     legend_items = [
-        ("صحيح", "green"),
-        ("خطأ", "red"),
-        ("جزئي", "yellow"),
-        ("غير واضح", "orange")
+        ("✓ صحيح", "Checkmark"),
+        ("✗ خطأ", "X mark"),
+        ("~ جزئي", "Wave")
     ]
     
     y_offset = 20
-    for text, color_key in legend_items:
-        color = ANNOTATION_COLORS[color_key]
-        # Draw colored box
-        draw.rectangle([(10, y_offset), (40, y_offset + 20)], fill=color)
-        # Draw text (using default font since Arabic requires special font handling)
+    for text, desc in legend_items:
+        # Draw blue sample mark
+        draw.rectangle([(10, y_offset), (40, y_offset + 20)], fill=HANDDRAWN_COLOR)
+        # Draw text
         draw.text((50, y_offset), text, fill='black')
-        y_offset += 30
+        y_offset += 40
     
     return img

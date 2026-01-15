@@ -142,8 +142,8 @@ class BotManager:
                 })
     
     async def _grading_worker(self, worker_id: int):
-        """Worker that processes grading jobs"""
-        print(f"🔧 Worker {worker_id} started")
+        """Worker that processes grading jobs with midterm mode support"""
+        print(f"[Worker {worker_id}] Started")
         
         while True:
             try:
@@ -151,52 +151,186 @@ class BotManager:
                 
                 bot = job['bot']
                 event = job['event']
+                sender_id = job['sender_id']
                 sender_name = job['sender_name']
                 
-                print(f"🔧 Worker {worker_id}: Grading for teacher {bot.teacher_id}")
+                print(f"[Worker {worker_id}] Grading for teacher {bot.teacher_id}")
                 
                 try:
                     # Download the photo
                     answer_path = TEMP_IMAGES_DIR / f"answer_{bot.teacher_id}_{event.id}.jpg"
                     await bot.client.download_media(event.photo, answer_path)
                     
-                    # Grade
-                    grader = self.get_grader()
-                    loop = asyncio.get_event_loop()
+                    # Check if midterm mode is active for this teacher
+                    midterm_config = await self._get_midterm_config(bot.teacher_id)
                     
-                    result = await loop.run_in_executor(
-                        None,
-                        lambda: grader.grade_answer(bot.quiz_path, answer_path)
-                    )
-                    
-                    # Annotate
-                    annotations = result.get('annotations', [])
-                    score = result.get('score', 0)
-                    annotated_path = draw_annotations_with_ocr(answer_path, annotations, score=score)
-                    
-                    # Send as scheduled message (draft)
-                    schedule_time = datetime.now() + timedelta(days=365)
-                    await bot.client.send_file(
-                        job['chat_id'],
-                        annotated_path,
-                        caption=f"🎯 النتيجة: {score}/10",
-                        schedule=schedule_time
-                    )
-                    
-                    print(f"✅ Worker {worker_id}: Graded {sender_name} - {score}/10")
+                    if midterm_config and midterm_config.is_active:
+                        # MIDTERM MODE
+                        await self._process_midterm_grading(
+                            worker_id, bot, job, answer_path, 
+                            midterm_config, sender_id, sender_name
+                        )
+                    else:
+                        # QUIZ MODE (default - score out of 10)
+                        await self._process_quiz_grading(
+                            worker_id, bot, job, answer_path, sender_name
+                        )
                     
                     # Cleanup
                     answer_path.unlink(missing_ok=True)
-                    annotated_path.unlink(missing_ok=True)
                     
                 except Exception as e:
-                    print(f"❌ Worker {worker_id} error: {e}")
+                    print(f"[Worker {worker_id}] Error: {e}")
+                    import traceback
+                    traceback.print_exc()
                 
                 finally:
                     self._grading_queue.task_done()
                     
             except asyncio.CancelledError:
                 break
+    
+    async def _get_midterm_config(self, teacher_id: int):
+        """Get midterm config for a teacher from database"""
+        try:
+            from database import async_session, MidtermConfig
+            from sqlalchemy import select
+            
+            async with async_session() as session:
+                result = await session.execute(
+                    select(MidtermConfig).where(MidtermConfig.teacher_id == teacher_id)
+                )
+                return result.scalar_one_or_none()
+        except Exception as e:
+            print(f"[MidtermConfig] Error: {e}")
+            return None
+    
+    async def _process_quiz_grading(self, worker_id: int, bot, job: dict, 
+                                     answer_path: Path, sender_name: str):
+        """Process grading in quiz mode (default - score out of 10)"""
+        grader = self.get_grader()
+        loop = asyncio.get_event_loop()
+        
+        result = await loop.run_in_executor(
+            None,
+            lambda: grader.grade_answer(bot.quiz_path, answer_path)
+        )
+        
+        # Annotate with hand-drawn style
+        annotations = result.get('annotations', [])
+        score = result.get('score', 0)
+        annotated_path = draw_annotations_with_ocr(
+            answer_path, annotations, 
+            score=score, max_score=10
+        )
+        
+        # Send as scheduled message
+        schedule_time = datetime.now() + timedelta(days=365)
+        await bot.client.send_file(
+            job['chat_id'],
+            annotated_path,
+            caption=f"[RESULT] {score}/10",
+            schedule=schedule_time
+        )
+        
+        print(f"[Worker {worker_id}] Quiz mode: {sender_name} - {score}/10")
+        annotated_path.unlink(missing_ok=True)
+    
+    async def _process_midterm_grading(self, worker_id: int, bot, job: dict,
+                                        answer_path: Path, midterm_config,
+                                        sender_id: int, sender_name: str):
+        """
+        Process grading in midterm mode with running totals.
+        
+        - Score is out of (total_marks / total_questions)
+        - Running total is tracked per student
+        """
+        from database import async_session, StudentProgress
+        from sqlalchemy import select
+        import json
+        
+        # Calculate points per question
+        total_marks = midterm_config.total_marks
+        total_questions = midterm_config.total_questions
+        points_per_question = total_marks // total_questions
+        
+        print(f"[Midterm] {total_questions} questions, {points_per_question} points each")
+        
+        # Grade with adjusted max score
+        grader = self.get_grader()
+        loop = asyncio.get_event_loop()
+        
+        result = await loop.run_in_executor(
+            None,
+            lambda: grader.grade_answer(bot.quiz_path, answer_path, max_score=points_per_question)
+        )
+        
+        annotations = result.get('annotations', [])
+        score = result.get('score', 0)
+        
+        # Ensure score doesn't exceed max
+        score = min(score, points_per_question)
+        
+        # Get or create student progress
+        async with async_session() as session:
+            result_db = await session.execute(
+                select(StudentProgress).where(
+                    StudentProgress.teacher_id == bot.teacher_id,
+                    StudentProgress.student_telegram_id == sender_id
+                )
+            )
+            progress = result_db.scalar_one_or_none()
+            
+            if progress is None:
+                # Create new progress record
+                progress = StudentProgress(
+                    teacher_id=bot.teacher_id,
+                    student_telegram_id=sender_id,
+                    student_name=sender_name,
+                    questions_answered="{}",
+                    total_score=0,
+                    questions_count=0
+                )
+                session.add(progress)
+            
+            # Update progress
+            questions_dict = json.loads(progress.questions_answered or "{}")
+            question_num = progress.questions_count + 1
+            questions_dict[f"Q{question_num}"] = score
+            
+            progress.questions_answered = json.dumps(questions_dict)
+            progress.total_score += score
+            progress.questions_count += 1
+            progress.student_name = sender_name
+            
+            await session.commit()
+            
+            # Calculate running total info
+            current_total = progress.total_score
+            questions_answered = progress.questions_count
+            max_so_far = questions_answered * points_per_question
+        
+        print(f"[Midterm] Student {sender_name}: Q{questions_answered} = {score}/{points_per_question}, Total: {current_total}/{max_so_far}")
+        
+        # Annotate with running total
+        annotated_path = draw_annotations_with_ocr(
+            answer_path, annotations,
+            score=score, 
+            max_score=points_per_question,
+            running_total=(current_total, total_marks)
+        )
+        
+        # Send as scheduled message
+        schedule_time = datetime.now() + timedelta(days=365)
+        await bot.client.send_file(
+            job['chat_id'],
+            annotated_path,
+            caption=f"[Q{questions_answered}] {score}/{points_per_question} | Total: {current_total}/{total_marks}",
+            schedule=schedule_time
+        )
+        
+        print(f"[Worker {worker_id}] Midterm: {sender_name} - {score}/{points_per_question} (Total: {current_total}/{total_marks})")
+        annotated_path.unlink(missing_ok=True)
     
     async def start_workers(self, num_workers: int = 3):
         """Start grading workers"""

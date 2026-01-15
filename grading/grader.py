@@ -62,8 +62,8 @@ class PhysicsGrader:
             
         return uploaded_files
     
-    def _build_system_prompt(self) -> str:
-        """Build the system prompt for grading"""
+    def _build_system_prompt(self, max_score: int = 10) -> str:
+        """Build the system prompt for grading with configurable max score"""
         
         
         prompt = f"""أنت "المعلم" (Al-Muallim)، مُصحح فيزياء دقيق جداً ومتسق.
@@ -75,13 +75,13 @@ class PhysicsGrader:
 
 **يجب عليك قراءة الملفات المرفقة بعناية قبل تقييم إجابة الطالب.**
 
-## 📊 نظام النقاط المحدد (DETERMINISTIC SCORING - يجب الالتزام 100%):
+## 📊 نظام النقاط (الدرجة القصوى: {max_score}):
 
 ### خطوة 1: عد الأسئلة
-أولاً، احسب عدد الأسئلة الكلي في الصورة (N).
+أولاً، احسب عدد الأسئلة/الأسئلة الفرعية الكلي في الصورة (N).
 
 ### خطوة 2: احسب النقاط لكل سؤال
-كل سؤال يستحق (10 ÷ N) نقاط. مثال: إذا كان هناك 5 أسئلة، كل سؤال = 2 نقاط.
+كل سؤال يستحق ({max_score} ÷ N) نقاط. مثال: إذا كان هناك 5 أسئلة، كل سؤال = {max_score // 5} نقاط تقريباً.
 
 ### خطوة 3: طبق القواعد التالية بدقة:
 - ✅ **إجابة صحيحة كاملة** = النقاط الكاملة للسؤال
@@ -90,12 +90,12 @@ class PhysicsGrader:
 - ⬜ **سؤال لم تتم إجابته** = 0 نقاط
 
 ### خطوة 4: اجمع النقاط
-الدرجة النهائية = مجموع نقاط جميع الأسئلة (مقربة لأقرب رقم صحيح)
+الدرجة النهائية = مجموع نقاط جميع الأسئلة (يجب أن تكون بين 0 و {max_score})
 
-### مثال حسابي:
-- 5 أسئلة، كل سؤال = 2 نقاط
-- س1: صحيح = 2، س2: جزئي = 1، س3: خطأ = 0، س4: صحيح = 2، س5: ناقص = 0
-- المجموع = 2+1+0+2+0 = 5/10
+### مثال حسابي (لدرجة قصوى = {max_score}):
+- 5 أسئلة، كل سؤال = {max_score // 5} نقاط
+- س1: صحيح = {max_score // 5}، س2: جزئي = {max_score // 10}، س3: خطأ = 0
+- المجموع = {max_score // 5} + {max_score // 10} + 0 = {max_score // 5 + max_score // 10}/{max_score}
 
 ## قواعد التقييم المهمة (اقرأها بعناية):
 1. **اقرأ السؤال بدقة** - اقرأ صورة السؤال أولاً لتفهم بالضبط ماذا يُطلب من الطالب
@@ -207,7 +207,8 @@ class PhysicsGrader:
     def grade_answer(
         self,
         question_image_path: Path,
-        answer_image_path: Path
+        answer_image_path: Path,
+        max_score: int = 10
     ) -> Dict:
         """
         Grade a student's answer using Gemini 3 Pro with DETERMINISTIC OCR-first approach.
@@ -219,11 +220,12 @@ class PhysicsGrader:
         Args:
             question_image_path: Path to the question image
             answer_image_path: Path to the student's answer image
+            max_score: Maximum score for this answer (default 10, can be 25 for midterms)
             
         Returns:
             Dictionary with score, feedback_ar, and annotations
         """
-        logger.info("Starting DETERMINISTIC grading process (OCR-first)")
+        logger.info(f"Starting grading process (max_score={max_score})")
         logger.info(f"Question: {question_image_path}")
         logger.info(f"Answer: {answer_image_path}")
         
@@ -231,7 +233,7 @@ class PhysicsGrader:
             # STEP 1: Extract text using Google Cloud Vision OCR (DETERMINISTIC)
             from utils.ocr_detector import extract_full_text
             
-            logger.info("Step 1: Extracting text via OCR (deterministic)...")
+            logger.info("Step 1: Extracting text via OCR...")
             question_text = extract_full_text(question_image_path)
             answer_text = extract_full_text(answer_image_path)
             
@@ -243,7 +245,7 @@ class PhysicsGrader:
             logger.debug(f"Answer preview: {answer_text[:200]}...")
             
             # STEP 2: Build prompt with TEXT (not images) for deterministic grading
-            system_prompt = self._build_system_prompt()
+            system_prompt = self._build_system_prompt(max_score=max_score)
             
             # Create request with curriculum PDFs + extracted text
             logger.info(f"Step 2: Sending TEXT to {GEMINI_MODEL} for grading...")

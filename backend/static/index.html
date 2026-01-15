@@ -237,6 +237,110 @@
         .hidden {
             display: none !important;
         }
+
+        /* Toggle Switch Styles */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .toggle-label {
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-card);
+            transition: 0.3s;
+            border-radius: 26px;
+            border: 1px solid var(--border);
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: var(--text-secondary);
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .toggle-switch input:checked+.toggle-slider:before {
+            transform: translateX(24px);
+            background-color: white;
+        }
+
+        .midterm-settings {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--border);
+        }
+
+        .input-small {
+            width: 80px;
+            padding: 10px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .settings-info {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 8px;
+        }
+
+        .midterm-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: var(--accent);
+            color: white;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            margin-right: 8px;
+        }
     </style>
 </head>
 
@@ -290,6 +394,35 @@
                 <div id="quizStatus" class="quiz-status hidden">
                     <span>✓</span>
                     <span>البوت جاهز لتصحيح إجابات الطلاب تلقائياً</span>
+                </div>
+            </div>
+
+            <!-- Midterm Mode Settings -->
+            <div class="card" style="margin-top: 20px;">
+                <h3 class="card-title">إعدادات الاختبار</h3>
+
+                <div class="toggle-container">
+                    <span class="toggle-label">وضع الاختبار النصفي</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="midtermToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div id="midtermSettings" class="midterm-settings hidden">
+                    <div class="settings-row">
+                        <span class="toggle-label">عدد الأسئلة</span>
+                        <input type="number" id="questionsCount" class="input-small" value="6" min="1" max="20">
+                    </div>
+                    <div class="settings-row">
+                        <span class="toggle-label">الدرجة الكلية</span>
+                        <input type="number" id="totalMarks" class="input-small" value="100" min="10" max="100">
+                    </div>
+                    <div class="settings-info" id="midtermInfo">
+                        <strong>كل سؤال:</strong> <span id="pointsPerQuestion">16</span> درجة
+                    </div>
+                    <button id="resetProgressBtn" class="btn btn-secondary" style="margin-top: 15px;">إعادة تعيين تقدم
+                        الطلاب</button>
                 </div>
             </div>
         </div>
@@ -479,6 +612,101 @@
                 }
             } catch (err) { }
         }
+
+        // Midterm Mode Functions
+        const midtermToggle = document.getElementById('midtermToggle');
+        const midtermSettings = document.getElementById('midtermSettings');
+        const questionsCount = document.getElementById('questionsCount');
+        const totalMarks = document.getElementById('totalMarks');
+        const pointsPerQuestion = document.getElementById('pointsPerQuestion');
+
+        function updatePointsDisplay() {
+            const questions = parseInt(questionsCount.value) || 6;
+            const marks = parseInt(totalMarks.value) || 100;
+            pointsPerQuestion.textContent = Math.floor(marks / questions);
+        }
+
+        midtermToggle.addEventListener('change', async () => {
+            const isActive = midtermToggle.checked;
+            midtermSettings.classList.toggle('hidden', !isActive);
+            if (teacherId) {
+                await saveMidtermConfig();
+            }
+        });
+
+        questionsCount.addEventListener('change', async () => {
+            updatePointsDisplay();
+            if (teacherId && midtermToggle.checked) {
+                await saveMidtermConfig();
+            }
+        });
+
+        totalMarks.addEventListener('change', async () => {
+            updatePointsDisplay();
+            if (teacherId && midtermToggle.checked) {
+                await saveMidtermConfig();
+            }
+        });
+
+        async function saveMidtermConfig() {
+            if (!teacherId) return;
+            try {
+                const res = await fetch(API_URL + '/quiz/midterm-config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teacher_id: teacherId,
+                        is_active: midtermToggle.checked,
+                        total_questions: parseInt(questionsCount.value) || 6,
+                        total_marks: parseInt(totalMarks.value) || 100
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const mode = midtermToggle.checked ? 'النصفي' : 'العادي';
+                    showMessage('تم تفعيل وضع الاختبار ' + mode, 'success');
+                }
+            } catch (err) {
+                showMessage('خطأ في حفظ الإعدادات', 'error');
+            }
+        }
+
+        async function loadMidtermConfig() {
+            if (!teacherId) return;
+            try {
+                const res = await fetch(API_URL + '/quiz/midterm-config/' + teacherId);
+                const data = await res.json();
+                midtermToggle.checked = data.is_active;
+                questionsCount.value = data.total_questions;
+                totalMarks.value = data.total_marks;
+                midtermSettings.classList.toggle('hidden', !data.is_active);
+                updatePointsDisplay();
+            } catch (err) { }
+        }
+
+        document.getElementById('resetProgressBtn').addEventListener('click', async () => {
+            if (!teacherId) return;
+            if (!confirm('هل أنت متأكد؟ سيتم حذف جميع درجات الطلاب الحالية.')) return;
+
+            try {
+                const res = await fetch(API_URL + '/quiz/reset-student-progress/' + teacherId, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showMessage('تم إعادة تعيين تقدم الطلاب', 'success');
+                }
+            } catch (err) {
+                showMessage('خطأ في إعادة التعيين', 'error');
+            }
+        });
+
+        // Modify loadQuizStatus to also load midterm config
+        const originalLoadQuizStatus = loadQuizStatus;
+        loadQuizStatus = async function () {
+            await originalLoadQuizStatus();
+            await loadMidtermConfig();
+        };
     </script>
 </body>
 

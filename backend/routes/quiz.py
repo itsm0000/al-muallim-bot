@@ -5,12 +5,13 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db, Teacher, Quiz
+from database import get_db, Teacher, Quiz, MidtermConfig
 from bot_manager import bot_manager
 
 router = APIRouter()
@@ -18,6 +19,11 @@ router = APIRouter()
 QUIZZES_DIR = Path(__file__).parent.parent / "quizzes"
 
 
+class MidtermConfigRequest(BaseModel):
+    teacher_id: int
+    is_active: bool
+    total_questions: int = 6
+    total_marks: int = 100
 class QuizResponse(BaseModel):
     id: int
     image_url: str
@@ -133,3 +139,99 @@ async def get_quiz_history(teacher_id: int, db: AsyncSession = Depends(get_db)):
             for q in quizzes
         ]
     }
+
+
+@router.post("/midterm-config")
+async def set_midterm_config(
+    config: MidtermConfigRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Set or update midterm mode configuration for a teacher.
+    
+    When is_active=True, the bot grades in midterm mode:
+    - Total marks = 100 (configurable)
+    - Each question = 100 / total_questions
+    - Running totals tracked per student
+    """
+    # Get or create config
+    result = await db.execute(
+        select(MidtermConfig).where(MidtermConfig.teacher_id == config.teacher_id)
+    )
+    midterm = result.scalar_one_or_none()
+    
+    if midterm is None:
+        midterm = MidtermConfig(
+            teacher_id=config.teacher_id,
+            is_active=config.is_active,
+            total_questions=config.total_questions,
+            total_marks=config.total_marks
+        )
+        db.add(midterm)
+    else:
+        midterm.is_active = config.is_active
+        midterm.total_questions = config.total_questions
+        midterm.total_marks = config.total_marks
+    
+    await db.commit()
+    
+    mode = "midterm" if config.is_active else "quiz"
+    return {
+        "success": True,
+        "message": f"Mode set to {mode}",
+        "config": {
+            "is_active": midterm.is_active,
+            "total_questions": midterm.total_questions,
+            "total_marks": midterm.total_marks,
+            "points_per_question": midterm.total_marks // midterm.total_questions
+        }
+    }
+
+
+@router.get("/midterm-config/{teacher_id}")
+async def get_midterm_config(teacher_id: int, db: AsyncSession = Depends(get_db)):
+    """Get current midterm configuration for a teacher"""
+    result = await db.execute(
+        select(MidtermConfig).where(MidtermConfig.teacher_id == teacher_id)
+    )
+    midterm = result.scalar_one_or_none()
+    
+    if midterm is None:
+        return {
+            "is_active": False,
+            "total_questions": 6,
+            "total_marks": 100,
+            "points_per_question": 16
+        }
+    
+    return {
+        "is_active": midterm.is_active,
+        "total_questions": midterm.total_questions,
+        "total_marks": midterm.total_marks,
+        "points_per_question": midterm.total_marks // midterm.total_questions
+    }
+
+
+@router.post("/reset-student-progress/{teacher_id}")
+async def reset_student_progress(teacher_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Reset all student progress for a teacher (for new midterm exam).
+    Call this when starting a new midterm to clear old running totals.
+    """
+    from database import StudentProgress
+    
+    result = await db.execute(
+        select(StudentProgress).where(StudentProgress.teacher_id == teacher_id)
+    )
+    progress_records = result.scalars().all()
+    
+    for record in progress_records:
+        await db.delete(record)
+    
+    await db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Reset progress for {len(progress_records)} students"
+    }
+
