@@ -3,273 +3,217 @@
                     مشروع المُعلم - التوثيق الكامل
 ================================================================================
 
+Updated: January 15, 2026
+Version: 2.0 (Multi-Tenant PWA)
+
 === OVERVIEW ===
 
-Al-Muallim Bot (المُعلم) is an intelligent Telegram bot designed to automatically 
-grade handwritten physics exams using AI-powered analysis. It's built for Iraqi 
-physics students following Hussein Mohammed's 2025 physics curriculum.
+Al-Muallim Bot (المُعلم) is an intelligent Telegram USERBOT designed to automatically 
+grade handwritten physics exams using AI-powered analysis. 
+
+Version 2.0 adds a MULTI-TENANT PWA system allowing ANY teacher to sign up
+and use the grading bot on their own Telegram account.
 
 The name "Al-Muallim" (المُعلم) means "The Teacher" in Arabic.
 
 
-=== WHAT IT DOES ===
+=== CURRENT DEPLOYMENT ===
 
-1. RECEIVES EXAM IMAGES
-   - Users send the bot a photo of the exam question
-   - Users then send a photo of their handwritten answer
+LIVE URL: http://107.178.217.60:8000
 
-2. GRADES USING AI
-   - The bot uses Google's Gemini 2.5 Pro AI model with "thinking mode"
-   - It compares the student's answer against the official curriculum
-   - Provides a score out of 10 with detailed feedback in Arabic
+GCP VM DETAILS:
+- Name: al-muallim-bot
+- Zone: us-central1-a
+- Machine Type: e2-micro (Free tier eligible)
+- OS: Debian GNU/Linux 12
+- Disk: 30GB
+- External IP: 107.178.217.60 (Ephemeral - may change on restart!)
+- Firewall Rule: allow-http-8000 (TCP 8000 from 0.0.0.0/0)
 
-3. ANNOTATES IMAGES
-   - Returns the answer image with visual annotations:
-     ✓ Green checkmark: Correct answer
-     ✗ Red X: Mistake
-     ! Yellow exclamation: Partially correct
-
-4. PROVIDES DETAILED FEEDBACK
-   - Lists what was correct, incorrect, partially correct, and missing
-   - All feedback is in Arabic for the target audience
+⚠️ IMPORTANT NOTES:
+1. The IP is EPHEMERAL - consider reserving a static IP in GCP
+2. The SQLite database is stored on the VM - backup if needed
+3. If VM is deleted, all teacher sessions and quiz records are lost
 
 
-=== HOW IT'S BUILT ===
+=== ARCHITECTURE ===
 
-TECHNOLOGY STACK:
------------------
-- Language: Python 3.9+
-- Telegram Framework: python-telegram-bot (v21+)
-- AI Model: Google Gemini 2.5 Pro (via google-genai library)
-- Image Processing: Pillow (PIL)
-- OCR (Optical Character Recognition): EasyOCR (Arabic + English)
-- PDF Processing: pdfplumber
-- Environment Management: python-dotenv
+OLD (v1.0 - Single User):
+  userbot.py → ONE teacher's account → ONE global quiz
 
-PROJECT STRUCTURE:
+NEW (v2.0 - Multi-Tenant):
+  PWA Frontend → FastAPI Backend → Bot Manager → MULTIPLE teachers
+
+
+SYSTEM COMPONENTS:
 ------------------
+
+                    ┌─────────────────────────────────────────┐
+                    │        GCP Cloud (107.178.217.60)       │
+                    ├─────────────────────────────────────────┤
+                    │  PWA Frontend ───→ FastAPI Backend      │
+                    │  (Arabic UI)        ├── /auth (login)   │
+                    │                     ├── /quiz (upload)  │
+                    │                     └── /status         │
+                    │                          │              │
+                    │                    Bot Manager          │
+                    │              ┌─────────────────┐        │
+                    │              │ Teacher 1 Bot   │        │
+                    │              │ Teacher 2 Bot   │        │
+                    │              │ Teacher N Bot   │        │
+                    │              └─────────────────┘        │
+                    │              ┌─────────────────┐        │
+                    │              │ 3 Grading Workers│       │
+                    │              │ (Shared Queue)   │        │
+                    │              └─────────────────┘        │
+                    │                     │                   │
+                    │              PhysicsGrader              │
+                    │           (Gemini 3 Pro Preview)        │
+                    └─────────────────────────────────────────┘
+
+
+=== HOW IT WORKS ===
+
+FOR TEACHERS:
+1. Open http://107.178.217.60:8000
+2. Enter phone number (with country code)
+3. Enter the code received on Telegram
+4. Upload a quiz image
+5. Done! Bot is now running on their account
+
+FOR STUDENTS:
+1. Send a photo of their answer to the teacher's Telegram
+2. Bot automatically grades it
+3. Graded result appears as a scheduled message
+
+
+=== AI GRADING ===
+
+MODEL: Gemini 3 Pro Preview
+(Configured in config.py: GEMINI_MODEL = "gemini-3-pro-preview")
+
+THE GRADING CODE IS UNCHANGED from v1.0:
+- grading/grader.py - PhysicsGrader class
+- grading/annotator.py - draws ✓ ✗ ! symbols on answers
+- utils/ocr_detector.py - text detection
+
+SCORING:
+- Score out of 10
+- ✓ Green = Correct
+- ✗ Red = Mistake
+- ! Yellow = Partially correct
+
+
+=== PROJECT STRUCTURE ===
 
 al-muallim-bot/
 │
-├── bot.py                    # Main entry point - starts the Telegram bot
-├── config.py                 # Configuration settings and environment variables
-├── requirements.txt          # Python dependencies
-├── .env                      # API keys (TELEGRAM_BOT_TOKEN, GOOGLE_API_KEY)
-├── .env.example              # Template for environment variables
+├── backend/                    # NEW: Multi-tenant backend
+│   ├── main.py                 # FastAPI app with lifespan events
+│   ├── database.py             # SQLAlchemy models (Teacher, Quiz, PendingAuth)
+│   ├── bot_manager.py          # Multi-session Telethon manager
+│   ├── requirements.txt        # Backend dependencies
+│   ├── routes/
+│   │   ├── auth.py             # Telegram login flow
+│   │   ├── quiz.py             # Quiz upload/management
+│   │   └── status.py           # System status endpoints
+│   └── static/
+│       └── index.html          # PWA frontend (Arabic, dark theme)
 │
-├── handlers/
-│   └── upload_handler.py     # Manages conversation flow for receiving images
+├── grading/                    # UNCHANGED from v1.0
+│   ├── grader.py               # PhysicsGrader using Gemini
+│   └── annotator.py            # Image annotation
 │
-├── grading/
-│   ├── grader.py             # Core AI grading logic using Gemini
-│   └── annotator.py          # Draws annotations on answer images
-│
-├── scripts/
-│   └── ingest_curriculum.py  # Extracts text from curriculum PDFs
-│
-├── utils/
-│   ├── logger.py             # Centralized logging with Arabic support
-│   └── ocr_detector.py       # EasyOCR text detection for annotations
-│
-├── curriculum_data/
-│   └── curriculum.json       # Extracted curriculum text (generated)
-│
-└── temp_images/              # Temporary storage for user-uploaded images
+├── config.py                   # Configuration (model, API keys)
+├── userbot.py                  # Original single-user bot (still works)
+├── .env                        # API keys (local)
+├── .gitignore                  # Protects sensitive files
+└── curriculum/                 # Physics curriculum PDFs
 
 
-CORE COMPONENTS EXPLAINED:
---------------------------
+=== ENVIRONMENT VARIABLES ===
 
-1. bot.py
-   - Creates the Telegram application using the Bot API
-   - Registers command handlers (/start, /help, /grade, /cancel, /stop)
-   - Sets up conversation handler for the grading flow
+Required on the GCP VM (.env file in ~/al-muallim-bot/):
 
-2. config.py
-   - Loads API keys from .env file
-   - Defines paths for curriculum data and temp images
-   - Sets AI model configuration (model name, thinking level)
-   - Defines annotation color codes
-
-3. handlers/upload_handler.py
-   - Implements a 2-step conversation:
-     Step 1: Receive question image → WAITING_FOR_QUESTION
-     Step 2: Receive answer image → WAITING_FOR_ANSWER → Grade → Send results
-   - Handles image download, grading, and cleanup
-
-4. grading/grader.py (PhysicsGrader class)
-   - Loads the curriculum from curriculum.json
-   - Builds a detailed system prompt in Arabic for the AI
-   - Sends question + answer images to Gemini API
-   - Parses JSON response with score, feedback, and annotations
-   - Uses low temperature (0.1) for consistent grading
-
-5. grading/annotator.py
-   - Uses EasyOCR to detect text locations in the answer image
-   - Merges nearby text boxes into answer regions
-   - Draws symbols (checkmark/X/exclamation) on detected answer areas
-   - Displays the score in a circle in the top-left corner
-
-6. utils/ocr_detector.py
-   - Initializes EasyOCR reader for Arabic and English
-   - Detects text boxes with bounding box coordinates
-   - Provides fuzzy matching to find specific text in detected boxes
-
-7. scripts/ingest_curriculum.py
-   - Reads physics curriculum PDF files using pdfplumber
-   - Extracts text from each page
-   - Saves structured data to curriculum_data/curriculum.json
+TELEGRAM_API_ID=30619302
+TELEGRAM_API_HASH=a501dc4dd3e7e2288cdc3dc18ff9e3ce
+GOOGLE_API_KEY=<your-google-api-key>
+GEMINI_MODEL=gemini-3-pro-preview
 
 
-=== HOW TO OPERATE ===
+=== RUNNING THE SERVER ===
 
-INITIAL SETUP:
---------------
+ON GCP VM:
+cd ~/al-muallim-bot/backend
+nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 
-1. Install Python 3.9 or higher
+TO VIEW LOGS:
+tail -f ~/al-muallim-bot/backend/backend.log
 
-2. Navigate to the project directory:
-   cd al-muallim-bot
+TO RESTART:
+pkill -f uvicorn
+cd ~/al-muallim-bot/backend && nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 
-3. Create a virtual environment:
-   python -m venv venv
-
-4. Activate the virtual environment:
-   Windows: .\venv\Scripts\activate
-   macOS/Linux: source venv/bin/activate
-
-5. Install dependencies:
-   pip install -r requirements.txt
-
-6. Set up API keys:
-   - Copy .env.example to .env
-   - Add your Telegram Bot Token (from @BotFather)
-   - Add your Google Cloud API Key (with Gemini access)
-
-7. Extract the curriculum (one-time):
-   python scripts/ingest_curriculum.py
+TO UPDATE FROM GITHUB:
+cd ~/al-muallim-bot && git pull
 
 
-RUNNING THE BOT:
-----------------
+=== SECURITY ===
 
-1. Activate the virtual environment (if not already active):
-   .\venv\Scripts\activate
+The .gitignore protects:
+✓ .env - API keys
+✓ *.session - Telegram session files
+✓ gen-*.json - Google Cloud credentials
+✓ *.log - Log files
+✓ temp_images/ - Temporary files
 
-2. Start the bot:
-   python bot.py
-
-3. You should see:
-   "Starting Al-Muallim Bot"
-   "Bot is running... Press Ctrl+C to stop"
-
-
-USING THE BOT (for students):
------------------------------
-
-1. Open Telegram and find your bot by its username
-2. Send /start to see the welcome message
-3. Send /grade to begin grading
-4. Send a photo of the exam question
-5. Send a photo of your handwritten answer
-6. Wait 10-30 seconds for AI processing
-7. Receive:
-   - Annotated image with symbols marking correct/incorrect answers
-   - Text message with detailed feedback and score
+STORED ON VM (not in Git):
+- almuallim.db - SQLite database with teacher sessions
+- quizzes/ - Uploaded quiz images
 
 
-AVAILABLE COMMANDS:
--------------------
-/start  - Welcome message and bot introduction
-/grade  - Start a new grading session
-/help   - Display help information
-/cancel - Cancel current grading session
-/stop   - Stop the bot (admin)
+=== FUTURE IMPROVEMENTS ===
+
+1. STATIC IP
+   - Reserve a static IP in GCP Console → VPC Network → IP Addresses
+   - Free while attached to a running VM
+
+2. DOMAIN NAME
+   - Point a domain to the static IP
+   - Set up HTTPS with Let's Encrypt
+
+3. DATABASE BACKUP
+   - Consider backing up almuallim.db periodically
+   - Or migrate to Cloud SQL for persistence
+
+4. SYSTEMD SERVICE
+   - Create a systemd service for auto-restart on boot
 
 
-=== AI GRADING DETAILS ===
+=== GIT COMMANDS ===
 
-The AI follows these grading rules:
+All code is stored at: https://github.com/itsm0000/al-muallim-bot
 
-SCORING SCALE:
-- 10/10: Perfect solution with no errors
-- 8-9/10: Excellent with minor mistakes
-- 7/10: Very good with few errors or missing parts
-- 6/10: Good but with several errors
-- 4-5/10: Average - correct idea but weak execution
-- 2-3/10: Weak with many errors
-- 0-1/10: No solution or completely wrong
+TO SAVE CHANGES:
+git add -A
+git commit -m "Description of changes"
+git push
 
-EVALUATION PROCESS:
-1. Read the question image to understand what's being asked
-2. Check the curriculum for the correct answer
-3. Compare student's answer with the curriculum
-4. Double-check before making a judgment
-5. Identify unanswered questions
-
-OUTPUT FORMAT:
-The AI returns structured JSON with:
-- score: Number from 0-10
-- feedback_ar: Detailed feedback in Arabic
-- annotations: List of text snippets with labels (correct/mistake/partial/unclear)
-
-
-=== TROUBLESHOOTING ===
-
-PROBLEM: "Curriculum file not found"
-SOLUTION: Run python scripts/ingest_curriculum.py
-
-PROBLEM: "ModuleNotFoundError"
-SOLUTION: Ensure venv is activated and run pip install -r requirements.txt
-
-PROBLEM: "Invalid API key"
-SOLUTION: Check .env file has correct TELEGRAM_BOT_TOKEN and GOOGLE_API_KEY
-
-PROBLEM: Bot not responding
-SOLUTION: 
-- Verify bot is running (python bot.py)
-- Check logs in bot.log
-- Verify Telegram token is correct
-
-PROBLEM: Arabic text not displaying correctly
-SOLUTION: Ensure terminal/console supports UTF-8 encoding
-
-
-=== REQUIREMENTS ===
-
-Python packages (requirements.txt):
-- python-telegram-bot>=21.0  (Telegram API integration)
-- google-genai                (Google Gemini AI access)
-- pdfplumber                  (PDF text extraction)
-- Pillow                      (Image processing)
-- python-dotenv               (Environment variable loading)
-- easyocr                     (Text detection in images)
-
-
-=== API KEYS NEEDED ===
-
-1. TELEGRAM_BOT_TOKEN
-   - Get from @BotFather on Telegram
-   - Create new bot with /newbot command
-   
-2. GOOGLE_API_KEY
-   - Get from Google AI Studio (aistudio.google.com/apikey)
-   - Ensure Gemini API is enabled
-
-
-=== LOGGING ===
-
-All activities are logged to:
-- Console: INFO level
-- bot.log file: DEBUG level (more detailed)
+TO DEPLOY TO GCP:
+1. Push to GitHub
+2. SSH to VM: gcloud compute ssh al-muallim-bot --zone=us-central1-a
+3. Pull and restart:
+   cd ~/al-muallim-bot && git pull
+   pkill -f uvicorn
+   cd backend && nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 
 
 === CREDITS ===
 
-- AI Model: Google Gemini 2.5 Pro
+- AI Model: Google Gemini 3 Pro Preview
 - Curriculum: Hussein Mohammed - Physics 2025 (حسين محمد - فيزياء 2025)
-- Framework: python-telegram-bot
-- OCR: EasyOCR
+- Framework: FastAPI + Telethon
+- Frontend: Vanilla HTML/CSS/JS PWA
 
 
 ================================================================================
