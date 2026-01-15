@@ -66,21 +66,21 @@ async def send_code(request: SendCodeRequest, db: AsyncSession = Depends(get_db)
         result = await client.send_code_request(phone)
         
         # Store the phone_code_hash in database
-        async with db.begin():
-            # Delete any existing pending auth for this phone
-            existing = await db.execute(
-                select(PendingAuth).where(PendingAuth.phone == phone)
-            )
-            existing_auth = existing.scalar_one_or_none()
-            if existing_auth:
-                await db.delete(existing_auth)
-            
-            # Create new pending auth
-            pending = PendingAuth(
-                phone=phone,
-                phone_code_hash=result.phone_code_hash
-            )
-            db.add(pending)
+        # Delete any existing pending auth for this phone
+        existing = await db.execute(
+            select(PendingAuth).where(PendingAuth.phone == phone)
+        )
+        existing_auth = existing.scalar_one_or_none()
+        if existing_auth:
+            await db.delete(existing_auth)
+        
+        # Create new pending auth
+        pending = PendingAuth(
+            phone=phone,
+            phone_code_hash=result.phone_code_hash
+        )
+        db.add(pending)
+        await db.commit()
         
         # Store client for verification step
         _auth_clients[phone] = client
@@ -145,33 +145,35 @@ async def verify_code(request: VerifyCodeRequest, db: AsyncSession = Depends(get
     # Save session string
     session_string = client.session.save()
     
-    async with db.begin():
-        # Check if teacher already exists
-        existing = await db.execute(
-            select(Teacher).where(Teacher.phone == phone)
+    # Check if teacher already exists
+    existing = await db.execute(
+        select(Teacher).where(Teacher.phone == phone)
+    )
+    teacher = existing.scalar_one_or_none()
+    
+    if teacher:
+        # Update existing
+        teacher.telegram_id = me.id
+        teacher.first_name = me.first_name
+        teacher.session_string = session_string
+        teacher.last_login = datetime.utcnow()
+        teacher.is_active = True
+    else:
+        # Create new
+        teacher = Teacher(
+            phone=phone,
+            telegram_id=me.id,
+            first_name=me.first_name,
+            session_string=session_string,
+            last_login=datetime.utcnow()
         )
-        teacher = existing.scalar_one_or_none()
-        
-        if teacher:
-            # Update existing
-            teacher.telegram_id = me.id
-            teacher.first_name = me.first_name
-            teacher.session_string = session_string
-            teacher.last_login = datetime.utcnow()
-            teacher.is_active = True
-        else:
-            # Create new
-            teacher = Teacher(
-                phone=phone,
-                telegram_id=me.id,
-                first_name=me.first_name,
-                session_string=session_string,
-                last_login=datetime.utcnow()
-            )
-            db.add(teacher)
-        
-        # Clean up pending auth
-        await db.delete(pending)
+        db.add(teacher)
+    
+    # Clean up pending auth
+    await db.delete(pending)
+    
+    # Commit all changes
+    await db.commit()
     
     # Refresh to get ID
     await db.refresh(teacher)
@@ -203,9 +205,9 @@ async def logout(teacher_id: int, db: AsyncSession = Depends(get_db)):
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     
-    async with db.begin():
-        teacher.is_active = False
-        teacher.session_string = None
+    teacher.is_active = False
+    teacher.session_string = None
+    await db.commit()
     
     # TODO: Stop userbot for this teacher
     # await bot_manager.stop_for_teacher(teacher_id)
