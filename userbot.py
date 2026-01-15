@@ -34,6 +34,14 @@ from utils.logger import setup_logger
 from grading.grader import PhysicsGrader
 from grading.annotator import draw_annotations_with_ocr
 
+# Database imports for midterm mode
+try:
+    from backend.database import async_session, MidtermConfig, StudentProgress
+    from sqlalchemy import select
+    DB_AVAILABLE = True
+except ImportError:
+    DB_AVAILABLE = False
+
 # Load environment variables
 load_dotenv()
 
@@ -175,18 +183,45 @@ def get_active_quiz() -> Path:
     return _teacher_quizzes.get(0)
 
 
-async def grade_student_answer(answer_path: Path, quiz_path: Path) -> tuple:
+async def grade_student_answer(answer_path: Path, quiz_path: Path, 
+                                teacher_id: int = None, sender_id: int = None,
+                                sender_name: str = None) -> tuple:
     """
     Grade a student's answer using the specified quiz.
     
+    Supports both quiz mode (10 points) and midterm mode (configurable points with running totals).
+    
     Returns:
-        Tuple of (annotated_image_path, feedback_message, score)
+        Tuple of (annotated_image_path, feedback_message, score, max_score)
     """
     if not quiz_path or not quiz_path.exists():
         raise Exception("No active quiz set! Teacher must set a quiz first.")
     
     logger.info(f"Grading answer: {answer_path}")
     logger.info(f"Using quiz: {quiz_path}")
+    
+    # Check for midterm mode if database is available
+    midterm_config = None
+    max_score = 10  # Default quiz mode
+    running_total = None
+    
+    if DB_AVAILABLE and teacher_id:
+        try:
+            async with async_session() as session:
+                # Get midterm config
+                result = await session.execute(
+                    select(MidtermConfig).where(MidtermConfig.teacher_id == teacher_id)
+                )
+                midterm_config = result.scalar_one_or_none()
+                
+                if midterm_config and midterm_config.is_active:
+                    # Calculate points per question
+                    total_marks = midterm_config.total_marks
+                    total_questions = midterm_config.total_questions
+                    max_score = total_marks // total_questions
+                    logger.info(f"Midterm mode: {total_questions} questions, {max_score} points each")
+        except Exception as e:
+            logger.error(f"Error checking midterm config: {e}")
     
     # Run grading in thread pool to avoid blocking event loop
     loop = asyncio.get_event_loop()
@@ -195,18 +230,70 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path) -> tuple:
     # Grade in thread pool (CPU-bound operation)
     grading_result = await loop.run_in_executor(
         None, 
-        lambda: grader.grade_answer(quiz_path, answer_path)
+        lambda: grader.grade_answer(quiz_path, answer_path, max_score=max_score)
     )
     
-    # Annotate the image
+    # Get annotations and score
     text_annotations = grading_result.get('annotations', [])
-    score = grading_result.get('score', 0)
-    annotated_path = draw_annotations_with_ocr(answer_path, text_annotations, score=score)
+    score = min(grading_result.get('score', 0), max_score)  # Cap at max
+    
+    # Update student progress and get running total (midterm mode only)
+    if DB_AVAILABLE and midterm_config and midterm_config.is_active and sender_id:
+        try:
+            async with async_session() as session:
+                # Get or create student progress
+                result = await session.execute(
+                    select(StudentProgress).where(
+                        StudentProgress.teacher_id == teacher_id,
+                        StudentProgress.student_telegram_id == sender_id
+                    )
+                )
+                progress = result.scalar_one_or_none()
+                
+                if progress is None:
+                    import json as json_module
+                    progress = StudentProgress(
+                        teacher_id=teacher_id,
+                        student_telegram_id=sender_id,
+                        student_name=sender_name or "Unknown",
+                        questions_answered="{}",
+                        total_score=0,
+                        questions_count=0
+                    )
+                    session.add(progress)
+                
+                # Update progress
+                import json as json_module
+                questions_dict = json_module.loads(progress.questions_answered or "{}")
+                question_num = progress.questions_count + 1
+                questions_dict[f"Q{question_num}"] = score
+                
+                progress.questions_answered = json_module.dumps(questions_dict)
+                progress.total_score += score
+                progress.questions_count += 1
+                if sender_name:
+                    progress.student_name = sender_name
+                
+                await session.commit()
+                
+                # Set running total for annotation
+                running_total = (progress.total_score, midterm_config.total_marks)
+                logger.info(f"Midterm progress: Q{question_num}={score}/{max_score}, Total={progress.total_score}/{midterm_config.total_marks}")
+                
+        except Exception as e:
+            logger.error(f"Error updating student progress: {e}")
+    
+    # Annotate the image with correct score format
+    annotated_path = draw_annotations_with_ocr(
+        answer_path, text_annotations, 
+        score=score, max_score=max_score,
+        running_total=running_total
+    )
     
     # Format feedback
     feedback_message = grader.format_feedback_message(grading_result)
     
-    return annotated_path, feedback_message, score
+    return annotated_path, feedback_message, score, max_score
 
 
 async def grading_worker(worker_id: int, queue: asyncio.Queue):
@@ -226,14 +313,19 @@ async def grading_worker(worker_id: int, queue: asyncio.Queue):
             logger.info(f"Worker {worker_id} processing job for {job.sender_name} (teacher: {job.teacher_id})")
             
             try:
-                # Grade the answer using the teacher's quiz
-                annotated_path, feedback, score = await grade_student_answer(job.answer_path, job.quiz_path)
+                # Grade the answer using the teacher's quiz (with midterm support)
+                annotated_path, feedback, score, max_score = await grade_student_answer(
+                    job.answer_path, job.quiz_path,
+                    teacher_id=job.teacher_id,
+                    sender_id=job.sender_id,
+                    sender_name=job.sender_name
+                )
                 
                 # Create scheduled message (draft) - send to the TEACHER, not the student
                 schedule_time = datetime.now() + timedelta(days=365)
                 
-                # Include student name in the caption
-                caption = f"🎯 {job.sender_name}: {score}/10"
+                # Include student name in the caption with dynamic score format
+                caption = f"🎯 {job.sender_name}: {score}/{max_score}"
                 
                 await _client.send_file(
                     job.teacher_id,  # Send to teacher, not original chat
@@ -242,7 +334,7 @@ async def grading_worker(worker_id: int, queue: asyncio.Queue):
                     schedule=schedule_time
                 )
                 
-                logger.info(f"Worker {worker_id}: Created draft for {job.sender_name} - Score: {score}/10")
+                logger.info(f"Worker {worker_id}: Created draft for {job.sender_name} - Score: {score}/{max_score}")
                 
                 # Cleanup temp files
                 job.answer_path.unlink(missing_ok=True)

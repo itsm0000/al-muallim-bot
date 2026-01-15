@@ -290,8 +290,8 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
             bbox = merged_box["bbox"]  # [x_min, y_min, x_max, y_max]
             merged_text = merged_box["text"]
             
-            # Determine label: mistake/correct/partial
-            label = "correct"  # Default
+            # Determine label: only draw marks for AI-annotated text
+            label = None  # Default to None - only draw if AI explicitly annotated
             for annotation in text_annotations:
                 annot_label = annotation.get("label", "")
                 annot_text = annotation.get("text", "")
@@ -301,8 +301,8 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
                     label = annot_label
                     break
             
-            # Skip if unclear
-            if label == "unclear":
+            # Skip if no label (not annotated by AI) or unclear
+            if label is None or label == "unclear":
                 continue
             
             # Draw hand-drawn mark based on label
