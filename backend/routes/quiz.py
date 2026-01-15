@@ -60,21 +60,21 @@ async def upload_quiz(
     with open(file_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     
-    async with db.begin():
-        # Deactivate all previous quizzes for this teacher
-        old_quizzes = await db.execute(
-            select(Quiz).where(Quiz.teacher_id == teacher_id, Quiz.is_active == True)
-        )
-        for old_quiz in old_quizzes.scalars():
-            old_quiz.is_active = False
-        
-        # Create new quiz record
-        quiz = Quiz(
-            teacher_id=teacher_id,
-            image_path=str(file_path),
-            is_active=True
-        )
-        db.add(quiz)
+    # Deactivate all previous quizzes for this teacher
+    old_quizzes = await db.execute(
+        select(Quiz).where(Quiz.teacher_id == teacher_id, Quiz.is_active == True)
+    )
+    for old_quiz in old_quizzes.scalars():
+        old_quiz.is_active = False
+    
+    # Create new quiz record
+    quiz = Quiz(
+        teacher_id=teacher_id,
+        image_path=str(file_path),
+        is_active=True
+    )
+    db.add(quiz)
+    await db.commit()
     
     await db.refresh(quiz)
     
