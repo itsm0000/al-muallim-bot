@@ -172,22 +172,46 @@ STORED ON VM (not in Git):
 - quizzes/ - Uploaded quiz images
 
 
+=== CHANGELOG ===
+
+January 15, 2026:
+- Increased score circle radius from 60px to 90px for better visibility
+- Increased score font size from 50px to 72px
+- Fixed font loading on Linux: now tries multiple system fonts
+  (DejaVuSans-Bold, LiberationSans-Bold, etc.) instead of just arial.ttf
+- Server runs 24/7 on GCP VM - no daily restarts needed
+- Curriculum PDFs are cached on server startup, not re-uploaded per grading
+
+
+=== MANAGING TEACHERS ===
+
+TO VIEW ALL TEACHERS:
+cd ~/al-muallim-bot/backend
+sqlite3 teachers.db "SELECT * FROM teachers;"
+
+TO REMOVE A TEACHER:
+sqlite3 teachers.db "DELETE FROM teachers WHERE id = <teacher_id>;"
+# Then restart the server
+
+NOTE: If a teacher has 2FA (two-step verification) on Telegram, they must
+temporarily disable it during registration, then re-enable it after.
+
+
 === FUTURE IMPROVEMENTS ===
 
-1. STATIC IP
-   - Reserve a static IP in GCP Console → VPC Network → IP Addresses
-   - Free while attached to a running VM
-
-2. DOMAIN NAME
-   - Point a domain to the static IP
+1. DOMAIN NAME
+   - Point a domain to the static IP 34.71.188.46
    - Set up HTTPS with Let's Encrypt
 
-3. DATABASE BACKUP
+2. DATABASE BACKUP
    - Consider backing up almuallim.db periodically
    - Or migrate to Cloud SQL for persistence
 
-4. SYSTEMD SERVICE
+3. SYSTEMD SERVICE
    - Create a systemd service for auto-restart on boot
+
+4. 2FA SUPPORT
+   - Add cloud password field to registration flow
 
 
 === GIT COMMANDS ===
