@@ -3,8 +3,8 @@
                     مشروع المُعلم - التوثيق الكامل
 ================================================================================
 
-Updated: January 15, 2026
-Version: 2.0 (Multi-Tenant PWA)
+Updated: January 16, 2026
+Version: 2.1 (Midterm Mode + Improved Grading)
 
 === OVERVIEW ===
 
@@ -13,6 +13,8 @@ grade handwritten physics exams using AI-powered analysis.
 
 Version 2.0 adds a MULTI-TENANT PWA system allowing ANY teacher to sign up
 and use the grading bot on their own Telegram account.
+
+Version 2.1 adds MIDTERM MODE with running totals and improved annotation accuracy.
 
 The name "Al-Muallim" (المُعلم) means "The Teacher" in Arabic.
 
@@ -25,15 +27,15 @@ GCP VM DETAILS:
 - Name: al-muallim-bot
 - Zone: us-central1-a
 - Machine Type: e2-micro (Free tier eligible)
-- OS: Debian GNU/Linux 12
+- OS: Ubuntu 24.04.3 LTS
 - Disk: 30GB
 - Static IP: 34.71.188.46 (Reserved as 'al-muallim-static-ip')
 - Firewall Rule: allow-http-8000 (TCP 8000 from 0.0.0.0/0)
 
 ⚠️ IMPORTANT NOTES:
-1. The IP is EPHEMERAL - consider reserving a static IP in GCP
-2. The SQLite database is stored on the VM - backup if needed
-3. If VM is deleted, all teacher sessions and quiz records are lost
+1. The SQLite database is stored on the VM - backup if needed
+2. If VM is deleted, all teacher sessions and quiz records are lost
+3. Both userbot.py AND backend must be running for full functionality
 
 
 === ARCHITECTURE ===
@@ -41,19 +43,22 @@ GCP VM DETAILS:
 OLD (v1.0 - Single User):
   userbot.py → ONE teacher's account → ONE global quiz
 
-NEW (v2.0 - Multi-Tenant):
+NEW (v2.0+ - Multi-Tenant with Midterm Support):
   PWA Frontend → FastAPI Backend → Bot Manager → MULTIPLE teachers
+                                              → Midterm Config per teacher
+                                              → Student Progress tracking
 
 
 SYSTEM COMPONENTS:
 ------------------
 
                     ┌─────────────────────────────────────────┐
-                    │        GCP Cloud (107.178.217.60)       │
+                    │        GCP Cloud (34.71.188.46)         │
                     ├─────────────────────────────────────────┤
                     │  PWA Frontend ───→ FastAPI Backend      │
                     │  (Arabic UI)        ├── /auth (login)   │
                     │                     ├── /quiz (upload)  │
+                    │                     ├── /quiz/midterm-config │
                     │                     └── /status         │
                     │                          │              │
                     │                    Bot Manager          │
@@ -69,17 +74,24 @@ SYSTEM COMPONENTS:
                     │                     │                   │
                     │              PhysicsGrader              │
                     │           (Gemini 3 Pro Preview)        │
+                    │                     │                   │
+                    │              ┌─────────────────┐        │
+                    │              │ MidtermConfig   │        │
+                    │              │ StudentProgress │        │
+                    │              │ (Per-teacher DB)│        │
+                    │              └─────────────────┘        │
                     └─────────────────────────────────────────┘
 
 
 === HOW IT WORKS ===
 
 FOR TEACHERS:
-1. Open http://107.178.217.60:8000
+1. Open http://34.71.188.46:8000
 2. Enter phone number (with country code)
 3. Enter the code received on Telegram
-4. Upload a quiz image
-5. Done! Bot is now running on their account
+4. Upload a quiz/exam image (PDF also supported)
+5. Optional: Enable "Midterm Mode" for 100-point exams
+6. Done! Bot is now running on their account
 
 FOR STUDENTS:
 1. Send a photo of their answer to the teacher's Telegram
@@ -87,48 +99,140 @@ FOR STUDENTS:
 3. Graded result appears as a scheduled message
 
 
+=== GRADING MODES ===
+
+The bot supports two grading modes:
+
+1. QUIZ MODE (Default):
+   - Score out of 10 points
+   - Single score circle displayed
+   - Good for quick quizzes and homework
+
+2. MIDTERM MODE (New in v2.1):
+   - Score out of 100 points (configurable)
+   - Two score circles displayed:
+     * Question score (e.g., 5/25)
+     * Running total (e.g., 20/100)
+   - Tracks student progress across multiple submitted answers
+   - Configured per teacher via PWA settings
+
+ENABLING MIDTERM MODE:
+1. Login to PWA at http://34.71.188.46:8000
+2. Toggle "اختبار 100 درجة" (100-point exam)
+3. Set number of questions (e.g., 4)
+4. System auto-calculates points per question (100 ÷ 4 = 25 each)
+
+
 === AI GRADING ===
 
 MODEL: Gemini 3 Pro Preview
 (Configured in config.py: GEMINI_MODEL = "gemini-3-pro-preview")
 
-THE GRADING CODE IS UNCHANGED from v1.0:
-- grading/grader.py - PhysicsGrader class
-- grading/annotator.py - draws ✓ ✗ ! symbols on answers
-- utils/ocr_detector.py - text detection
+GRADING FILES:
+- grading/grader.py     - PhysicsGrader class, AI prompts, OCR integration
+- grading/annotator.py  - Hand-drawn style annotations (checkmarks, X's, circles)
+- utils/ocr_detector.py - Google Cloud Vision OCR for text detection
 
-SCORING:
-- Score out of 10
-- ✓ Green = Correct
-- ✗ Red = Mistake
-- ! Yellow = Partially correct
+HOW GRADING WORKS:
+1. Student image received via Telegram
+2. OCR extracts text from the image (Google Cloud Vision)
+3. AI (Gemini) grades each answer against curriculum PDFs
+4. AI returns JSON with score and annotations
+5. Annotator draws marks only on AI-identified answers
+6. Score circle(s) added to top-left corner
+7. Annotated image sent back as scheduled message
+
+SCORING ANNOTATIONS:
+- ✓ Blue checkmark = Correct answer
+- ✗ Blue X mark = Wrong answer  
+- ~ Blue wavy line = Partially correct
+
+SCORE CIRCLES:
+- Large circle: Question score (e.g., 8/10 or 20/25)
+- Small circle (midterm only): Running total (e.g., 45/100)
+
+
+=== ANNOTATION SYSTEM (v2.1 Changes) ===
+
+The annotation system was significantly improved in v2.1:
+
+BEFORE (v2.0):
+- Drew checkmarks on ALL detected text boxes
+- Default label was "correct" for everything
+- Caused unwanted green stickers on question text
+
+AFTER (v2.1):
+- Only draws marks on text that AI explicitly graded
+- Default label is None (no mark if not graded)
+- Much cleaner output with marks only on actual answers
+
+KEY CODE CHANGE (annotator.py, line 294):
+  OLD: label = "correct"  # Default
+  NEW: label = None       # Only draw if AI explicitly annotated
+
+
+=== DATABASE MODELS ===
+
+Located in backend/database.py:
+
+1. Teacher
+   - id, phone, telegram_id, session_string, is_active
+   - Stores Telegram authentication for each teacher
+
+2. Quiz
+   - id, teacher_id, image_path, is_active
+   - Stores uploaded quiz/exam images per teacher
+
+3. MidtermConfig (New in v2.1)
+   - id, teacher_id, is_active, total_questions, total_marks
+   - Stores midterm mode settings per teacher
+   - Default: 6 questions, 100 total marks
+
+4. StudentProgress (New in v2.1)
+   - id, teacher_id, student_telegram_id, student_name
+   - questions_answered (JSON: {"Q1": 20, "Q2": 25, ...})
+   - total_score, questions_count
+   - Tracks running totals per student during midterm exams
+
+5. GradingLog
+   - Logs all grading operations for analytics
+
+6. PendingAuth
+   - Temporary storage for Telegram login flow
 
 
 === PROJECT STRUCTURE ===
 
 al-muallim-bot/
 │
-├── backend/                    # NEW: Multi-tenant backend
+├── backend/                    # Multi-tenant backend
 │   ├── main.py                 # FastAPI app with lifespan events
-│   ├── database.py             # SQLAlchemy models (Teacher, Quiz, PendingAuth)
-│   ├── bot_manager.py          # Multi-session Telethon manager
+│   ├── database.py             # SQLAlchemy models (6 tables)
+│   ├── bot_manager.py          # Multi-session Telethon manager + midterm grading
 │   ├── requirements.txt        # Backend dependencies
 │   ├── routes/
 │   │   ├── auth.py             # Telegram login flow
-│   │   ├── quiz.py             # Quiz upload/management
+│   │   ├── quiz.py             # Quiz upload + midterm-config endpoints
 │   │   └── status.py           # System status endpoints
 │   └── static/
-│       └── index.html          # PWA frontend (Arabic, dark theme)
+│       └── index.html          # PWA frontend (Arabic, dark theme, midterm toggle)
 │
-├── grading/                    # UNCHANGED from v1.0
-│   ├── grader.py               # PhysicsGrader using Gemini
-│   └── annotator.py            # Image annotation
+├── grading/
+│   ├── grader.py               # PhysicsGrader - AI prompts, OCR-first grading
+│   ├── annotator.py            # Hand-drawn annotations + score circles
+│   ├── pdf_finder.py           # Locates curriculum PDFs
+│   └── test_handdrawn.py       # Test script for annotation rendering
 │
-├── config.py                   # Configuration (model, API keys)
-├── userbot.py                  # Original single-user bot (still works)
-├── .env                        # API keys (local)
+├── utils/
+│   ├── logger.py               # Logging setup
+│   └── ocr_detector.py         # Google Cloud Vision OCR wrapper
+│
+├── config.py                   # Configuration (model, API keys, paths)
+├── userbot.py                  # Standalone bot (v2.1: midterm support added)
+├── .env                        # API keys (local, not in Git)
 ├── .gitignore                  # Protects sensitive files
-└── curriculum/                 # Physics curriculum PDFs
+├── curriculum/                 # Physics curriculum PDFs (2 files)
+└── PROJECT_DOCUMENTATION.txt   # This file
 
 
 === ENVIRONMENT VARIABLES ===
@@ -140,19 +244,31 @@ TELEGRAM_API_HASH=a501dc4dd3e7e2288cdc3dc18ff9e3ce
 GOOGLE_API_KEY=<your-google-api-key>
 GEMINI_MODEL=gemini-3-pro-preview
 
+Also required: Google Cloud Vision credentials file
+(gen-lang-client-0182358176-*.json in project root)
+
 
 === RUNNING THE SERVER ===
 
-ON GCP VM:
+ON GCP VM - FULL STARTUP:
+
+# 1. Start the FastAPI backend (for PWA and bot management)
 cd ~/al-muallim-bot/backend
 nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
 
-TO VIEW LOGS:
-tail -f ~/al-muallim-bot/backend/backend.log
+# 2. Start the standalone userbot (for direct Telegram grading)
+cd ~/al-muallim-bot
+nohup python3 userbot.py > userbot.log 2>&1 &
 
-TO RESTART:
+TO VIEW LOGS:
+tail -f ~/al-muallim-bot/backend/backend.log    # Backend logs
+tail -f ~/al-muallim-bot/userbot.log            # Userbot logs
+
+TO RESTART EVERYTHING:
 pkill -f uvicorn
+pkill -f userbot.py
 cd ~/al-muallim-bot/backend && nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+cd ~/al-muallim-bot && nohup python3 userbot.py > userbot.log 2>&1 &
 
 TO UPDATE FROM GITHUB:
 cd ~/al-muallim-bot && git pull
@@ -166,15 +282,33 @@ The .gitignore protects:
 ✓ gen-*.json - Google Cloud credentials
 ✓ *.log - Log files
 ✓ temp_images/ - Temporary files
+✓ __pycache__/ - Python bytecode
+✓ almuallim.db - SQLite database
 
 STORED ON VM (not in Git):
 - almuallim.db - SQLite database with teacher sessions
 - quizzes/ - Uploaded quiz images
+- *.session - Telegram session files
 
 
 === CHANGELOG ===
 
-January 15, 2026:
+January 16, 2026 (v2.1):
+- MAJOR: Added midterm mode support to userbot.py
+  * Queries MidtermConfig database for each teacher
+  * Tracks StudentProgress with running totals
+  * Passes max_score and running_total to annotator
+- FIXED: Annotator no longer draws checkmarks on all text
+  * Changed default label from "correct" to None
+  * Only marks text that AI explicitly annotated
+- IMPROVED: AI grading prompt now focuses on student answers only
+  * Ignores question text and numbers
+  * Better sub-question handling
+  * Clearer scoring instructions
+- Added database imports to userbot.py (MidtermConfig, StudentProgress)
+- Score circles now dynamic: shows X/25 and Y/100 in midterm mode
+
+January 15, 2026 (v2.0.1):
 - Increased score circle radius from 60px to 90px for better visibility
 - Increased score font size from 50px to 72px
 - Fixed font loading on Linux: now tries multiple system fonts
@@ -182,19 +316,90 @@ January 15, 2026:
 - Server runs 24/7 on GCP VM - no daily restarts needed
 - Curriculum PDFs are cached on server startup, not re-uploaded per grading
 
+January 14, 2026 (v2.0):
+- Multi-tenant PWA system launched
+- Teachers can sign up with their own Telegram accounts
+- Bot Manager handles multiple concurrent teacher sessions
+- FastAPI backend with SQLite database
+
 
 === MANAGING TEACHERS ===
 
 TO VIEW ALL TEACHERS:
 cd ~/al-muallim-bot/backend
-sqlite3 teachers.db "SELECT * FROM teachers;"
+sqlite3 almuallim.db "SELECT * FROM teachers;"
+
+TO VIEW MIDTERM CONFIGS:
+sqlite3 almuallim.db "SELECT * FROM midterm_configs;"
+
+TO VIEW STUDENT PROGRESS:
+sqlite3 almuallim.db "SELECT * FROM student_progress;"
+
+TO RESET A STUDENT'S PROGRESS:
+sqlite3 almuallim.db "DELETE FROM student_progress WHERE student_telegram_id = <id>;"
 
 TO REMOVE A TEACHER:
-sqlite3 teachers.db "DELETE FROM teachers WHERE id = <teacher_id>;"
+sqlite3 almuallim.db "DELETE FROM teachers WHERE id = <teacher_id>;"
 # Then restart the server
 
 NOTE: If a teacher has 2FA (two-step verification) on Telegram, they must
 temporarily disable it during registration, then re-enable it after.
+
+
+=== MIDTERM MODE DETAILS ===
+
+When a teacher enables midterm mode:
+
+1. CONFIGURATION (via PWA):
+   - is_active: true
+   - total_questions: number of questions (e.g., 4)
+   - total_marks: total points (default 100)
+
+2. SCORING CALCULATION:
+   - points_per_question = total_marks / total_questions
+   - Example: 100 marks / 4 questions = 25 points per question
+
+3. SUB-QUESTION HANDLING:
+   - If a question has 12 sub-questions with 2 skippable
+   - Bot grades the 10 required sub-questions
+   - Each sub-question worth: 25 / 10 = 2.5 points
+   - AI prompt instructs: grade only written answers, not question text
+
+4. RUNNING TOTALS:
+   - Each student submission updates StudentProgress record
+   - questions_answered: JSON tracking each submission
+   - total_score: cumulative score
+   - questions_count: number of submissions
+
+5. DISPLAY:
+   - Top circle: Question score (e.g., "5/25")
+   - Bottom circle: Running total (e.g., "30/100")
+
+6. RESET PROGRESS:
+   - Use PWA "إعادة تعيين تقدم الطلاب" button
+   - Or directly: DELETE FROM student_progress WHERE teacher_id = X
+
+
+=== TROUBLESHOOTING ===
+
+PROBLEM: Bot not grading, checkmarks everywhere
+SOLUTION: Fixed in v2.1. Update code: git pull && restart
+
+PROBLEM: Score shows 0/10 instead of correct score
+SOLUTION: Check if midterm mode is enabled correctly in PWA
+
+PROBLEM: No running total circle shown
+SOLUTION: Ensure midterm mode is_active=true in database
+
+PROBLEM: AI grades question text as answers
+SOLUTION: Fixed in v2.1 with improved prompt. Update code.
+
+PROBLEM: Userbot not starting
+CHECK: python3 userbot.py - look for import errors
+COMMON: Missing module (install: pip install <module>)
+
+PROBLEM: Backend 500 errors
+CHECK: tail -f backend/backend.log for stack traces
 
 
 === FUTURE IMPROVEMENTS ===
@@ -208,10 +413,18 @@ temporarily disable it during registration, then re-enable it after.
    - Or migrate to Cloud SQL for persistence
 
 3. SYSTEMD SERVICE
-   - Create a systemd service for auto-restart on boot
+   - Create systemd services for auto-restart on boot
 
 4. 2FA SUPPORT
    - Add cloud password field to registration flow
+
+5. ADVANCED SUB-QUESTION CONFIG
+   - Allow teachers to specify sub-question structure per exam
+   - UI for: "12 sub-questions, 2 skippable"
+
+6. SCORE ANALYTICS
+   - Dashboard showing per-student progress
+   - Export grades to CSV
 
 
 === GIT COMMANDS ===
@@ -226,10 +439,43 @@ git push
 TO DEPLOY TO GCP:
 1. Push to GitHub
 2. SSH to VM: gcloud compute ssh al-muallim-bot --zone=us-central1-a
+   (Or use GCP Console → SSH in browser)
 3. Pull and restart:
    cd ~/al-muallim-bot && git pull
-   pkill -f uvicorn
+   pkill -f uvicorn && pkill -f userbot.py
    cd backend && nohup python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > backend.log 2>&1 &
+   cd .. && nohup python3 userbot.py > userbot.log 2>&1 &
+
+
+=== API ENDPOINTS ===
+
+BASE URL: http://34.71.188.46:8000
+
+POST /auth/request-code
+  Body: {"phone": "+1234567890"}
+  Returns: {"status": "code_sent", "phone_code_hash": "..."}
+
+POST /auth/verify-code
+  Body: {"phone": "+1234567890", "code": "12345", "phone_code_hash": "..."}
+  Returns: {"status": "authenticated", "teacher_id": 1}
+
+POST /quiz/upload
+  Body: FormData with 'file' and 'teacher_id'
+  Returns: {"status": "quiz_uploaded", "path": "..."}
+
+GET /quiz/status/{teacher_id}
+  Returns: {"has_quiz": true, "quiz_path": "...", "bot_running": true}
+
+POST /quiz/midterm-config
+  Body: {"teacher_id": 1, "is_active": true, "total_questions": 4, "total_marks": 100}
+  Returns: {"status": "updated", "mode": "midterm"}
+
+GET /quiz/midterm-config/{teacher_id}
+  Returns: {"is_active": true, "total_questions": 4, "total_marks": 100}
+
+POST /quiz/reset-progress
+  Body: {"teacher_id": 1}
+  Returns: {"status": "reset", "deleted": 5}
 
 
 === CREDITS ===
@@ -238,6 +484,7 @@ TO DEPLOY TO GCP:
 - Curriculum: Hussein Mohammed - Physics 2025 (حسين محمد - فيزياء 2025)
 - Framework: FastAPI + Telethon
 - Frontend: Vanilla HTML/CSS/JS PWA
+- OCR: Google Cloud Vision API
 
 
 ================================================================================
