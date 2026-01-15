@@ -124,11 +124,29 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
                 width=5
             )
             
-            # Draw score text
-            try:
-                font = ImageFont.truetype("arial.ttf", 72)  # Larger font for score
-            except:
+            # Draw score text - try multiple fonts that work on different systems
+            font = None
+            font_size = 72
+            font_options = [
+                "arial.ttf",           # Windows
+                "Arial.ttf",           # Windows (case variant)
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Linux (common)
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Linux (Ubuntu)
+                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",  # Linux (Arch)
+                "DejaVuSans-Bold.ttf",  # Fallback name
+            ]
+            for font_path in font_options:
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    logger.info(f"Using font: {font_path} at size {font_size}")
+                    break
+                except (OSError, IOError):
+                    continue
+            
+            if font is None:
+                # If no font found, use default but scale up
                 font = ImageFont.load_default()
+                logger.warning("Using default font - score may appear small")
             
             score_text = f"{score}/10"
             bbox = draw.textbbox((0, 0), score_text, font=font)
