@@ -110,7 +110,7 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         
         # Draw score circle in top-left corner if score is provided
         if score is not None:
-            circle_radius = 60
+            circle_radius = 90  # Larger circle for better visibility
             circle_center = (circle_radius + 20, circle_radius + 20)
             
             # Draw outer circle (background)
@@ -121,12 +121,12 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
                 ],
                 fill='white',
                 outline='black',
-                width=4
+                width=5
             )
             
             # Draw score text
             try:
-                font = ImageFont.truetype("arial.ttf", 50)
+                font = ImageFont.truetype("arial.ttf", 72)  # Larger font for score
             except:
                 font = ImageFont.load_default()
             
