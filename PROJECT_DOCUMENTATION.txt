@@ -19,7 +19,7 @@ The name "Al-Muallim" (المُعلم) means "The Teacher" in Arabic.
 
 === CURRENT DEPLOYMENT ===
 
-LIVE URL: http://107.178.217.60:8000
+LIVE URL: http://34.71.188.46:8000
 
 GCP VM DETAILS:
 - Name: al-muallim-bot
@@ -27,7 +27,7 @@ GCP VM DETAILS:
 - Machine Type: e2-micro (Free tier eligible)
 - OS: Debian GNU/Linux 12
 - Disk: 30GB
-- External IP: 107.178.217.60 (Ephemeral - may change on restart!)
+- Static IP: 34.71.188.46 (Reserved as 'al-muallim-static-ip')
 - Firewall Rule: allow-http-8000 (TCP 8000 from 0.0.0.0/0)
 
 ⚠️ IMPORTANT NOTES:
