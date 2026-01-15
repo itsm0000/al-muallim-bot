@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المعلم - Al-Muallim</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #6366f1;
+            --success: #22c55e;
+            --error: #ef4444;
+            --border: #475569;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            direction: rtl;
+        }
+
+        .app {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            font-size: 2rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 30px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .label {
+            display: block;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+        }
+
+        .input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1rem;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            margin-top: 10px;
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .message.success {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid var(--success);
+            color: var(--success);
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--error);
+            color: var(--error);
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 600px;
+        }
+
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .welcome {
+            font-size: 1.5rem;
+        }
+
+        .logout-btn {
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+        }
+
+        .upload-zone.active {
+            border-color: var(--success);
+            background: rgba(34, 197, 94, 0.05);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: var(--text-secondary);
+        }
+
+        .quiz-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--success);
+            margin-top: 15px;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <div class="logo">📚</div>
+        <h1 class="title">المعلم</h1>
+        <p class="subtitle">نظام التصحيح الذكي</p>
+
+        <div id="message" class="message hidden"></div>
+
+        <!-- Login View -->
+        <div id="loginView" class="card">
+            <h2 class="card-title">تسجيل الدخول</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="label">رقم الهاتف (مع رمز الدولة)</label>
+                    <input type="tel" id="phoneInput" class="input" placeholder="+964xxxxxxxxx" required>
+                </div>
+                <button type="submit" id="sendCodeBtn" class="btn">إرسال رمز التحقق</button>
+            </form>
+        </div>
+
+        <!-- Verify View -->
+        <div id="verifyView" class="card hidden">
+            <h2 class="card-title">أدخل رمز التحقق</h2>
+            <form id="verifyForm">
+                <div class="form-group">
+                    <label class="label">الرمز من تيليجرام</label>
+                    <input type="text" id="codeInput" class="input" placeholder="12345" required>
+                </div>
+                <button type="submit" id="verifyBtn" class="btn">تأكيد</button>
+                <button type="button" id="backBtn" class="btn btn-secondary">رجوع</button>
+            </form>
+        </div>
+
+        <!-- Dashboard View -->
+        <div id="dashboardView" class="dashboard hidden">
+            <div class="dashboard-header">
+                <h2 class="welcome">مرحباً، <span id="teacherName"></span> 👋</h2>
+                <button id="logoutBtn" class="logout-btn">تسجيل الخروج</button>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">رفع صورة الاختبار</h3>
+                <div id="uploadZone" class="upload-zone">
+                    <div class="upload-icon" id="uploadIcon">📷</div>
+                    <p class="upload-text" id="uploadText">اضغط أو اسحب صورة السؤال هنا</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                <div id="quizStatus" class="quiz-status hidden">
+                    <span>✓</span>
+                    <span>البوت جاهز لتصحيح إجابات الطلاب تلقائياً</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '';
+        let teacherId = null;
+        let phone = '';
+
+        // Elements
+        const loginView = document.getElementById('loginView');
+        const verifyView = document.getElementById('verifyView');
+        const dashboardView = document.getElementById('dashboardView');
+        const messageEl = document.getElementById('message');
+        const phoneInput = document.getElementById('phoneInput');
+        const codeInput = document.getElementById('codeInput');
+        const teacherNameEl = document.getElementById('teacherName');
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const quizStatus = document.getElementById('quizStatus');
+        const uploadIcon = document.getElementById('uploadIcon');
+        const uploadText = document.getElementById('uploadText');
+
+        function showMessage(text, type) {
+            messageEl.textContent = text;
+            messageEl.className = 'message ' + type;
+            messageEl.classList.remove('hidden');
+        }
+
+        function hideMessage() {
+            messageEl.classList.add('hidden');
+        }
+
+        function showView(view) {
+            loginView.classList.add('hidden');
+            verifyView.classList.add('hidden');
+            dashboardView.classList.add('hidden');
+            view.classList.remove('hidden');
+        }
+
+        // Login form
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessage();
+            phone = phoneInput.value.trim();
+            if (!phone.startsWith('+')) phone = '+' + phone;
+
+            const btn = document.getElementById('sendCodeBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> جاري الإرسال...';
+
+            try {
+                const res = await fetch(API_URL + '/auth/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                    showView(verifyView);
+                    codeInput.focus();
+                } else {
+                    showMessage(data.message || 'حدث خطأ', 'error');
+                }
+            } catch (err) {
+                showMessage('خطأ في الاتصال بالخادم', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'إرسال رمز التحقق';
+        });
+
+        // Verify form
+        document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessage();
+            const code = codeInput.value.trim();
+
+            const btn = document.getElementById('verifyBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> جاري التحقق...';
+
+            try {
+                const res = await fetch(API_URL + '/auth/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, code })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    teacherId = data.teacher_id;
+                    teacherNameEl.textContent = data.first_name || 'معلم';
+                    showMessage('تم تسجيل الدخول بنجاح! ✅', 'success');
+                    showView(dashboardView);
+                    loadQuizStatus();
+                } else {
+                    showMessage(data.detail || data.message || 'رمز خاطئ', 'error');
+                }
+            } catch (err) {
+                showMessage('خطأ في الاتصال بالخادم', 'error');
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'تأكيد';
+        });
+
+        // Back button
+        document.getElementById('backBtn').addEventListener('click', () => {
+            hideMessage();
+            showView(loginView);
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            teacherId = null;
+            phone = '';
+            phoneInput.value = '';
+            codeInput.value = '';
+            quizStatus.classList.add('hidden');
+            uploadZone.classList.remove('active');
+            uploadIcon.textContent = '📷';
+            uploadText.textContent = 'اضغط أو اسحب صورة السؤال هنا';
+            hideMessage();
+            showView(loginView);
+        });
+
+        // Upload zone
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => e.preventDefault());
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) uploadQuiz(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) uploadQuiz(file);
+        });
+
+        async function uploadQuiz(file) {
+            if (!teacherId) return;
+            hideMessage();
+
+            uploadText.textContent = 'جاري الرفع...';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch(API_URL + '/quiz/upload?teacher_id=' + teacherId, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showMessage('تم رفع الاختبار بنجاح! ✅', 'success');
+                    quizStatus.classList.remove('hidden');
+                    uploadZone.classList.add('active');
+                    uploadIcon.textContent = '✅';
+                    uploadText.textContent = 'تم تعيين الاختبار! اضغط لتغييره';
+                } else {
+                    showMessage(data.detail || 'فشل رفع الاختبار', 'error');
+                    uploadText.textContent = 'اضغط أو اسحب صورة السؤال هنا';
+                }
+            } catch (err) {
+                showMessage('خطأ في رفع الملف', 'error');
+                uploadText.textContent = 'اضغط أو اسحب صورة السؤال هنا';
+            }
+        }
+
+        async function loadQuizStatus() {
+            if (!teacherId) return;
+            try {
+                const res = await fetch(API_URL + '/quiz/current/' + teacherId);
+                const data = await res.json();
+                if (data.has_quiz) {
+                    quizStatus.classList.remove('hidden');
+                    uploadZone.classList.add('active');
+                    uploadIcon.textContent = '✅';
+                    uploadText.textContent = 'تم تعيين الاختبار! اضغط لتغييره';
+                }
+            } catch (err) { }
+        }
+    </script>
+</body>
+
+</html>

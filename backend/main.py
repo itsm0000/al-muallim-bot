@@ -63,6 +63,23 @@ app.include_router(quiz.router, prefix="/quiz", tags=["Quiz Management"])
 app.include_router(status.router, prefix="/status", tags=["Status"])
 
 
-@app.get("/")
-async def root():
+@app.get("/api")
+async def api_status():
     return {"message": "Al-Muallim API", "status": "running"}
+
+
+# Serve static frontend files
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+# Serve index.html at root
+from fastapi.responses import FileResponse
+
+@app.get("/")
+async def serve_frontend():
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "Al-Muallim API", "status": "running", "frontend": "not deployed"}
