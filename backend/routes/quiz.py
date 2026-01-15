@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db, Teacher, Quiz
+from bot_manager import bot_manager
 
 router = APIRouter()
 
@@ -78,8 +79,8 @@ async def upload_quiz(
     
     await db.refresh(quiz)
     
-    # TODO: Notify bot manager to update quiz for this teacher
-    # await bot_manager.update_quiz(teacher_id, file_path)
+    # Update the quiz path for the running bot (if bot is running)
+    await bot_manager.update_quiz(teacher_id, file_path)
     
     return {
         "success": True,

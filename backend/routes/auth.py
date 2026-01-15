@@ -11,7 +11,9 @@ from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.errors import PhoneCodeInvalidError, PhoneCodeExpiredError, SessionPasswordNeededError
 
-from database import get_db, Teacher, PendingAuth
+from database import get_db, Teacher, PendingAuth, Quiz
+from bot_manager import bot_manager
+from pathlib import Path
 
 router = APIRouter()
 
@@ -185,8 +187,15 @@ async def verify_code(request: VerifyCodeRequest, db: AsyncSession = Depends(get
     # Clean up client from temp storage
     del _auth_clients[phone]
     
-    # TODO: Start userbot for this teacher
-    # await bot_manager.start_for_teacher(teacher.id, session_string)
+    # Get active quiz for this teacher (if any)
+    quiz_result = await db.execute(
+        select(Quiz).where(Quiz.teacher_id == teacher.id, Quiz.is_active == True)
+    )
+    quiz = quiz_result.scalar_one_or_none()
+    quiz_path = Path(quiz.image_path) if quiz else None
+    
+    # Start the bot for this teacher NOW
+    await bot_manager.start_for_teacher(teacher.id, session_string, quiz_path)
     
     return VerifyCodeResponse(
         success=True,
