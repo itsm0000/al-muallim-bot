@@ -66,20 +66,24 @@ async def send_code(request: SendCodeRequest, db: AsyncSession = Depends(get_db)
         result = await client.send_code_request(phone)
         
         # Store the phone_code_hash in database
-        # Delete any existing pending auth for this phone
+        # Check for existing pending auth and update or create new
         existing = await db.execute(
             select(PendingAuth).where(PendingAuth.phone == phone)
         )
         existing_auth = existing.scalar_one_or_none()
-        if existing_auth:
-            await db.delete(existing_auth)
         
-        # Create new pending auth
-        pending = PendingAuth(
-            phone=phone,
-            phone_code_hash=result.phone_code_hash
-        )
-        db.add(pending)
+        if existing_auth:
+            # Update existing record
+            existing_auth.phone_code_hash = result.phone_code_hash
+            existing_auth.created_at = datetime.utcnow()
+        else:
+            # Create new pending auth
+            pending = PendingAuth(
+                phone=phone,
+                phone_code_hash=result.phone_code_hash
+            )
+            db.add(pending)
+        
         await db.commit()
         
         # Store client for verification step
