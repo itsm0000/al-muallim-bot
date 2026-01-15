@@ -385,24 +385,24 @@
             </div>
 
             <div class="card">
-                <h3 class="card-title">رفع صورة الاختبار</h3>
+                <h3 class="card-title">رفع صورة الاختبار أو PDF</h3>
                 <div id="uploadZone" class="upload-zone">
-                    <div class="upload-icon" id="uploadIcon">📷</div>
-                    <p class="upload-text" id="uploadText">اضغط أو اسحب صورة السؤال هنا</p>
+                    <div class="upload-icon" id="uploadIcon">📄</div>
+                    <p class="upload-text" id="uploadText">اضغط أو اسحب صورة أو PDF هنا</p>
                 </div>
-                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" style="display: none;">
                 <div id="quizStatus" class="quiz-status hidden">
                     <span>✓</span>
                     <span>البوت جاهز لتصحيح إجابات الطلاب تلقائياً</span>
                 </div>
             </div>
 
-            <!-- Midterm Mode Settings -->
+            <!-- Exam Mode Settings -->
             <div class="card" style="margin-top: 20px;">
                 <h3 class="card-title">إعدادات الاختبار</h3>
 
                 <div class="toggle-container">
-                    <span class="toggle-label">وضع الاختبار النصفي</span>
+                    <span class="toggle-label">اختبار 100 درجة</span>
                     <label class="toggle-switch">
                         <input type="checkbox" id="midtermToggle">
                         <span class="toggle-slider"></span>
@@ -547,8 +547,8 @@
             codeInput.value = '';
             quizStatus.classList.add('hidden');
             uploadZone.classList.remove('active');
-            uploadIcon.textContent = '📷';
-            uploadText.textContent = 'اضغط أو اسحب صورة السؤال هنا';
+            uploadIcon.textContent = '📄';
+            uploadText.textContent = 'اضغط أو اسحب صورة أو PDF هنا';
             hideMessage();
             showView(loginView);
         });
@@ -559,7 +559,7 @@
         uploadZone.addEventListener('drop', (e) => {
             e.preventDefault();
             const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) uploadQuiz(file);
+            if (file && (file.type.startsWith('image/') || file.type === 'application/pdf')) uploadQuiz(file);
         });
 
         fileInput.addEventListener('change', (e) => {
@@ -663,8 +663,8 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    const mode = midtermToggle.checked ? 'النصفي' : 'العادي';
-                    showMessage('تم تفعيل وضع الاختبار ' + mode, 'success');
+                    const mode = midtermToggle.checked ? '100 درجة' : '10 درجات';
+                    showMessage('تم تفعيل اختبار ' + mode, 'success');
                 }
             } catch (err) {
                 showMessage('خطأ في حفظ الإعدادات', 'error');

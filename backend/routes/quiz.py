@@ -49,9 +49,14 @@ async def upload_quiz(
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     
-    # Validate file type
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+    # Validate file type - accept images OR PDFs
+    allowed_types = ["image/", "application/pdf"]
+    is_valid = any(
+        file.content_type.startswith(t) if t.endswith("/") else file.content_type == t 
+        for t in allowed_types
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="File must be an image or PDF")
     
     # Create directory for teacher if not exists
     teacher_dir = QUIZZES_DIR / str(teacher_id)
