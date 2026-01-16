@@ -205,6 +205,8 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     max_score = 10  # Default quiz mode
     running_total = None
     
+    logger.info(f"DB_AVAILABLE: {DB_AVAILABLE}, teacher_id: {teacher_id}")
+    
     if DB_AVAILABLE and teacher_id:
         try:
             async with async_session() as session:
@@ -214,18 +216,34 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
                 )
                 midterm_config = result.scalar_one_or_none()
                 
-                if midterm_config and midterm_config.is_active:
-                    # Calculate points per question
-                    total_marks = midterm_config.total_marks
-                    total_questions = midterm_config.total_questions
-                    max_score = total_marks // total_questions
-                    logger.info(f"Midterm mode: {total_questions} questions, {max_score} points each")
+                if midterm_config:
+                    logger.info(f"Found MidtermConfig: is_active={midterm_config.is_active}, "
+                               f"total_questions={midterm_config.total_questions}, "
+                               f"total_marks={midterm_config.total_marks}")
+                    
+                    if midterm_config.is_active:
+                        # Calculate points per question
+                        total_marks = midterm_config.total_marks
+                        total_questions = midterm_config.total_questions
+                        max_score = total_marks // total_questions
+                        logger.info(f"✓ MIDTERM MODE ACTIVE: {total_questions} questions, {max_score} points each")
+                    else:
+                        logger.info("MidtermConfig exists but is_active=False, using quiz mode")
+                else:
+                    logger.info(f"No MidtermConfig found for teacher_id={teacher_id}, using quiz mode (10 points)")
         except Exception as e:
             logger.error(f"Error checking midterm config: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    else:
+        if not DB_AVAILABLE:
+            logger.warning("Database not available - falling back to quiz mode")
     
     # Run grading in thread pool to avoid blocking event loop
     loop = asyncio.get_event_loop()
     grader = get_grader()
+    
+    logger.info(f">>> Calling grader.grade_answer with max_score={max_score}")
     
     # Grade in thread pool (CPU-bound operation)
     grading_result = await loop.run_in_executor(
@@ -235,7 +253,11 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     
     # Get annotations and score
     text_annotations = grading_result.get('annotations', [])
-    score = min(grading_result.get('score', 0), max_score)  # Cap at max
+    raw_score = grading_result.get('score', 0)
+    score = min(raw_score, max_score)  # Cap at max
+    
+    logger.info(f"<<< Grader returned: raw_score={raw_score}, capped_score={score}, max_score={max_score}")
+    logger.info(f"    Annotations: {len(text_annotations)} items")
     
     # Update student progress and get running total (midterm mode only)
     if DB_AVAILABLE and midterm_config and midterm_config.is_active and sender_id:
