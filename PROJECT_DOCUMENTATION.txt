@@ -3,8 +3,8 @@
                     مشروع المُعلم - التوثيق الكامل
 ================================================================================
 
-Updated: January 16, 2026
-Version: 2.1.1 (Midterm Logic Fix + Sub-question Support)
+Updated: January 18, 2026
+Version: 2.1.2 (Grading Improvements - PDF, Fuzzy Matching, Comprehension)
 
 === OVERVIEW ===
 
@@ -292,6 +292,21 @@ STORED ON VM (not in Git):
 
 
 === CHANGELOG ===
+
+January 18, 2026 (v2.1.2 - Grading Improvements):
+- FIXED: PDF quiz files now upload directly to Gemini (no more Vision API errors)
+  * grading/grader.py: Detects PDFs and uploads as file objects instead of OCR
+- FIXED: Annotation matching now uses fuzzy text matching (40% threshold)
+  * grading/annotator.py: Uses SequenceMatcher instead of exact substring
+  * Handles OCR text variations and Arabic text differences
+- IMPROVED: AI grading prompt rewritten for comprehension-based evaluation
+  * Focus on understanding concepts, not exact text matching
+  * Accept answers in student's own words if conceptually correct
+  * Only mark as "mistake" if concept/logic is actually wrong
+- ADDED: Detailed server-side logging of Gemini responses (invisible to students)
+- PENDING: Question number tracking bug (Q5 shows when only Q1-Q4 exist)
+  * bot_manager.py line 300-301 increments counter for every submission
+  * Needs fix: System should track actual question number (Q1-Q4)
 
 January 16, 2026 (v2.1.1):
 - FIXED: Midterm grading logic for sub-questions
