@@ -245,37 +245,59 @@ class PhysicsGrader:
         logger.info(f"Answer: {answer_image_path}")
         
         try:
-            # STEP 1: Extract text using Google Cloud Vision OCR (DETERMINISTIC)
             from utils.ocr_detector import extract_full_text
             
-            logger.info("Step 1: Extracting text via OCR...")
-            question_text = extract_full_text(question_image_path)
-            answer_text = extract_full_text(answer_image_path)
+            # Check if question is a PDF (PDFs can't be OCR'd, but Gemini supports them directly)
+            is_question_pdf = str(question_image_path).lower().endswith('.pdf')
             
-            logger.info(f"Question text extracted: {len(question_text)} chars")
+            # STEP 1: Handle question file based on type
+            if is_question_pdf:
+                logger.info("Step 1: Question is PDF - will upload directly to Gemini")
+                # Upload PDF to Gemini for this request
+                question_file = self.client.files.upload(file=question_image_path)
+                question_content = question_file  # Pass file object directly
+                question_text = None  # No OCR text for PDF
+            else:
+                logger.info("Step 1: Question is image - extracting text via OCR...")
+                question_text = extract_full_text(question_image_path)
+                question_content = None  # No file object for images
+                logger.info(f"Question text extracted: {len(question_text)} chars")
+            
+            # STEP 2: Extract text from student answer (always an image)
+            logger.info("Step 2: Extracting student answer text via OCR...")
+            answer_text = extract_full_text(answer_image_path)
             logger.info(f"Answer text extracted: {len(answer_text)} chars")
             
-            # Log first 200 chars for debugging
-            logger.debug(f"Question preview: {question_text[:200]}...")
+            # Log preview for debugging
+            if question_text:
+                logger.debug(f"Question preview: {question_text[:200]}...")
             logger.debug(f"Answer preview: {answer_text[:200]}...")
             
-            # STEP 2: Build prompt with TEXT (not images) for deterministic grading
+            # STEP 3: Build prompt and send to Gemini
             system_prompt = self._build_system_prompt(max_score=max_score)
-            
-            # Create request with curriculum PDFs + extracted text
-            logger.info(f"Step 2: Sending TEXT to {GEMINI_MODEL} for grading...")
+            logger.info(f"Step 3: Sending to {GEMINI_MODEL} for grading...")
             
             # Build contents list with curriculum PDFs first
             contents = [system_prompt]
             
-            # Add curriculum PDFs (we still need these for reference answers)
+            # Add curriculum PDFs (reference answers)
             for category, file_obj in self.curriculum_files.items():
                 contents.append(file_obj)
             
-            # Add EXTRACTED TEXT instead of images (THIS IS THE KEY CHANGE!)
+            # Add question content (either PDF file or OCR text)
+            if is_question_pdf and question_content:
+                contents.extend([
+                    "الملف التالي هو ملف السؤال (PDF):",
+                    question_content,
+                ])
+            else:
+                contents.extend([
+                    "النص التالي هو نص السؤال (تم استخراجه بواسطة OCR):",
+                    f"```\n{question_text}\n```",
+                ])
+            
+            # Add student answer (always OCR text)
             contents.extend([
-                "النص التالي هو نص السؤال (تم استخراجه بواسطة OCR):",
-                f"```\n{question_text}\n```",
                 "والآن إليك نص إجابة الطالب (تم استخراجه بواسطة OCR):",
                 f"```\n{answer_text}\n```",
                 "ملاحظة مهمة: هذا النص تم استخراجه آلياً من صورة بخط اليد. قد تكون هناك أخطاء بسيطة في القراءة."
@@ -297,7 +319,7 @@ class PhysicsGrader:
             # Parse JSON
             result = json.loads(result_text)
             
-            logger.info(f"Grading complete. Score: {result.get('score', 'N/A')}/{MAX_SCORE}")
+            logger.info(f"Grading complete. Score: {result.get('score', 'N/A')}/{max_score}")
             logger.info(f"Annotations: {len(result.get('annotations', []))}")
             
             return result

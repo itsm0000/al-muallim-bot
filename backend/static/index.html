@@ -518,7 +518,14 @@
 
                 if (data.success) {
                     teacherId = data.teacher_id;
-                    teacherNameEl.textContent = data.first_name || 'معلم';
+                    const firstName = data.first_name || 'معلم';
+                    teacherNameEl.textContent = firstName;
+                    
+                    // Save session to localStorage
+                    localStorage.setItem('teacherId', teacherId);
+                    localStorage.setItem('teacherPhone', phone);
+                    localStorage.setItem('teacherName', firstName);
+                    
                     showMessage('تم تسجيل الدخول بنجاح! ✅', 'success');
                     showView(dashboardView);
                     loadQuizStatus();
@@ -541,6 +548,11 @@
 
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', () => {
+            // Clear localStorage session
+            localStorage.removeItem('teacherId');
+            localStorage.removeItem('teacherPhone');
+            localStorage.removeItem('teacherName');
+            
             teacherId = null;
             phone = '';
             phoneInput.value = '';
@@ -707,6 +719,21 @@
             await originalLoadQuizStatus();
             await loadMidtermConfig();
         };
+
+        // Check for saved session on page load
+        (function checkSavedSession() {
+            const savedTeacherId = localStorage.getItem('teacherId');
+            const savedPhone = localStorage.getItem('teacherPhone');
+            const savedName = localStorage.getItem('teacherName');
+            
+            if (savedTeacherId && savedPhone) {
+                teacherId = parseInt(savedTeacherId);
+                phone = savedPhone;
+                teacherNameEl.textContent = savedName || 'معلم';
+                showView(dashboardView);
+                loadQuizStatus();
+            }
+        })();
     </script>
 </body>
 

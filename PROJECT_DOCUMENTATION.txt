@@ -4,7 +4,7 @@
 ================================================================================
 
 Updated: January 16, 2026
-Version: 2.1 (Midterm Mode + Improved Grading)
+Version: 2.1.1 (Midterm Logic Fix + Sub-question Support)
 
 === OVERVIEW ===
 
@@ -292,6 +292,14 @@ STORED ON VM (not in Git):
 
 
 === CHANGELOG ===
+
+January 16, 2026 (v2.1.1):
+- FIXED: Midterm grading logic for sub-questions
+  * AI prompt now explicitly instructs to count sub-questions (T)
+  * Calculates points proportionally: Score = (Correct / T) * MaxScore
+  * Example: 10 sub-questions, 25 points → 2.5 points each
+- ADDED: Detailed debug logging in userbot.py to trace midterm detection
+- IMPROVED: Capped score calculation logging to ensure valid range
 
 January 16, 2026 (v2.1):
 - MAJOR: Added midterm mode support to userbot.py
