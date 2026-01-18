@@ -286,24 +286,62 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         
         # Draw hand-drawn marks for each answer region
         annotations_drawn = 0
+        used_annotations = set()  # Track which annotations have been matched
+        
         for idx, merged_box in enumerate(merged_boxes):
             bbox = merged_box["bbox"]  # [x_min, y_min, x_max, y_max]
             merged_text = merged_box["text"]
             
-            # Determine label: only draw marks for AI-annotated text
-            label = None  # Default to None - only draw if AI explicitly annotated
-            for annotation in text_annotations:
-                annot_label = annotation.get("label", "")
-                annot_text = annotation.get("text", "")
-                
-                # Check if this merged text matches the annotation
-                if annot_text and annot_text in merged_text:
-                    label = annot_label
-                    break
+            # Determine label using FUZZY MATCHING (not exact substring)
+            label = None
+            best_match_score = 0.0
+            best_annotation = None
             
-            # Skip if no label (not annotated by AI) or unclear
+            from difflib import SequenceMatcher
+            
+            for annot_idx, annotation in enumerate(text_annotations):
+                if annot_idx in used_annotations:
+                    continue  # Skip already-matched annotations
+                    
+                annot_label = annotation.get("label", "")
+                annot_text = annotation.get("text", "").strip()
+                
+                if not annot_text:
+                    continue
+                
+                # Calculate similarity between annotation text and OCR merged text
+                merged_text_clean = merged_text.strip()
+                
+                # Try multiple matching approaches:
+                # 1. Direct fuzzy match
+                similarity1 = SequenceMatcher(None, annot_text.lower(), merged_text_clean.lower()).ratio()
+                
+                # 2. Check if annotation is substring (with normalization)
+                substring_match = annot_text.lower() in merged_text_clean.lower()
+                
+                # 3. Check if OCR text contains most of the annotation words
+                annot_words = set(annot_text.split())
+                merged_words = set(merged_text_clean.split())
+                word_overlap = len(annot_words & merged_words) / max(len(annot_words), 1)
+                
+                # Use the best matching approach
+                similarity = max(similarity1, word_overlap, 0.9 if substring_match else 0.0)
+                
+                # Lower threshold for Arabic text (OCR differences are common)
+                if similarity > best_match_score and similarity >= 0.4:
+                    best_match_score = similarity
+                    best_annotation = annotation
+                    label = annot_label
+                    best_annot_idx = annot_idx
+            
+            # Skip if no label found or unclear
             if label is None or label == "unclear":
                 continue
+            
+            # Mark this annotation as used
+            if best_annotation:
+                used_annotations.add(best_annot_idx)
+                logger.debug(f"Matched annotation '{best_annotation.get('text', '')[:30]}' to OCR '{merged_text[:30]}' (score: {best_match_score:.2f})")
             
             # Draw hand-drawn mark based on label
             if label == "correct":
@@ -311,7 +349,8 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
             elif label == "mistake":
                 draw_handdrawn_x(draw, bbox, scale=1.0)
             elif label == "partial":
-                draw_handdrawn_partial(draw, bbox, scale=1.0)
+                # Partial = checkmark but half grade (user requested same visual as correct)
+                draw_handdrawn_checkmark(draw, bbox, scale=1.0)
             
             annotations_drawn += 1
             logger.debug(f"Drew hand-drawn {label} for '{merged_text[:30]}...'")
