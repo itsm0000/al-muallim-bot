@@ -276,6 +276,7 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     q_label = None
     is_resubmission = False
     questions_info = None  # Initialize for smart progress display
+    show_total = False  # Initialize - will be set based on last-question detection
     if DB_AVAILABLE and midterm_config and midterm_config.is_active and sender_id:
         try:
             async with async_session() as session:
@@ -340,20 +341,27 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
                 
                 await session.commit()
                 
+                # Determine if we should show the total circle
+                # Show total if: 1) current answer is for last question, or 2) already answered last question
+                total_qs = midterm_config.total_questions
+                is_last_question = max(valid_questions) == total_qs
+                if is_last_question:
+                    progress.has_answered_last = True
+                    await session.commit()
+                
+                show_total = progress.has_answered_last
+                
                 # Set running total for annotation
                 running_total = (progress.total_score, midterm_config.total_marks)
                 q_label = ",".join([f"Q{q}" for q in valid_questions])
                 resubmit_note = " (update)" if is_resubmission else ""
                 logger.info(f"Midterm progress: {q_label}={score}/{max_score}, Total={progress.total_score}/{midterm_config.total_marks}{resubmit_note}")
                 
-                # Build questions_info for smart progress display
+                # Build questions_info for progress display
                 answered_questions = list(questions_dict.keys())  # ["Q1", "Q3", etc.]
-                total_qs = midterm_config.total_questions
-                is_complete = len(answered_questions) >= total_qs
                 questions_info = {
                     "answered": answered_questions,
-                    "total": total_qs,
-                    "is_complete": is_complete
+                    "total": total_qs
                 }
                 
         except Exception as e:
@@ -365,7 +373,8 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
         answer_path, text_annotations, 
         score=score, max_score=max_score,
         running_total=running_total,
-        questions_info=questions_info if DB_AVAILABLE and midterm_config and midterm_config.is_active else None
+        questions_info=questions_info if DB_AVAILABLE and midterm_config and midterm_config.is_active else None,
+        show_total=show_total if DB_AVAILABLE and midterm_config and midterm_config.is_active else True
     )
     
     # Format feedback

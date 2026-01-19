@@ -83,6 +83,7 @@ class MidtermConfig(Base):
     is_active = Column(Boolean, default=False)  # True = midterm mode, False = quiz mode
     total_questions = Column(Integer, default=6)  # Number of questions in the midterm
     total_marks = Column(Integer, default=100)  # Total marks (usually 100)
+    exam_end_time = Column(DateTime, nullable=True)  # When exam ends - triggers final grades
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -105,6 +106,9 @@ class StudentProgress(Base):
     questions_answered = Column(Text, default="{}")  # JSON: {"Q1": 20, "Q2": 25, ...}
     total_score = Column(Integer, default=0)
     questions_count = Column(Integer, default=0)  # Number of questions answered
+    has_answered_last = Column(Boolean, default=False)  # True after answering last question number
+    last_answer_image_path = Column(String, nullable=True)  # For re-sending at exam end
+    final_grade_sent = Column(Boolean, default=False)  # Prevent duplicate final sends
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

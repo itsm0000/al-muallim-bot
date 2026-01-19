@@ -245,7 +245,7 @@ def merge_box_group(boxes: list) -> dict:
 
 def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: int = None, 
                                max_score: int = 10, running_total: tuple = None,
-                               questions_info: dict = None,
+                               questions_info: dict = None, show_total: bool = True,
                                output_path: Path = None) -> Path:
     """
     Draw hand-drawn style annotations on image using OCR-detected text boxes.
@@ -258,7 +258,9 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         max_score: Maximum score for this question (default 10, can be 25 for midterms)
         running_total: Optional tuple of (current_total, max_total) for midterm mode
         questions_info: Optional dict with progress info:
-                       {"answered": ["Q1", "Q3"], "total": 4, "is_complete": False}
+                       {"answered": ["Q1", "Q3"], "total": 4}
+        show_total: Whether to show the running total circle (default True)
+                   False = only show question score, no total circle
         output_path: Optional custom output path
         
     Returns:
@@ -280,7 +282,7 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         
         # Draw score circle(s) in top-left corner
         if score is not None:
-            _draw_score_circles(draw, score, max_score, running_total, questions_info)
+            _draw_score_circles(draw, score, max_score, running_total, questions_info, show_total)
         
         # Group nearby OCR boxes into answer regions
         logger.info(f"Merging {len(ocr_boxes)} OCR boxes into answer regions...")
@@ -375,14 +377,15 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
 
 
 def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10, 
-                        running_total: tuple = None, questions_info: dict = None):
+                        running_total: tuple = None, questions_info: dict = None,
+                        show_total: bool = True):
     """
     Draw score circle(s) in the top-left corner with progress info.
     
     For midterm mode:
     - Always shows this question's score circle
     - Shows progress text (e.g., "1 of 4") as additional info
-    - ALWAYS shows running total circle (this IS the current grade)
+    - Shows running total circle only when show_total=True
     
     Args:
         draw: ImageDraw object
@@ -390,6 +393,7 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
         max_score: Maximum score for this question
         running_total: Optional tuple (current_total, max_total) for midterm mode
         questions_info: Optional dict {"answered": ["Q1", "Q3"], "total": 4}
+        show_total: Whether to draw the running total circle
     """
     circle_radius = 90
     circle_center = (circle_radius + 20, circle_radius + 20)
@@ -438,8 +442,8 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
             draw.text(progress_position, progress_text, fill=HANDDRAWN_COLOR, font=tiny_font)
             progress_height = 40  # Space for progress text
     
-    # ALWAYS draw running total circle if provided (this IS the current grade!)
-    if running_total is not None:
+    # Draw running total circle only if show_total=True
+    if running_total is not None and show_total:
         current_total, max_total = running_total
         
         # Position below main circle (and below progress text if shown)

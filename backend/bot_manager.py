@@ -279,6 +279,9 @@ class BotManager:
         # Ensure score doesn't exceed max
         score = min(score, points_per_question)
         
+        # Initialize show_total flag (will be set based on last-question detection)
+        show_total = False
+        
         # Get or create student progress
         async with async_session() as session:
             result_db = await session.execute(
@@ -343,6 +346,15 @@ class BotManager:
             current_total = progress.total_score
             questions_answered = progress.questions_count
             max_so_far = questions_answered * points_per_question
+            
+            # Determine if we should show the total circle
+            # Show total if: 1) current answer is for last question, or 2) already answered last question
+            is_last_question = max(valid_questions) == total_questions
+            if is_last_question:
+                progress.has_answered_last = True
+                await session.commit()
+            
+            show_total = progress.has_answered_last
         
         # Build question label for display
         q_label = ",".join([f"Q{q}" for q in valid_questions])
@@ -350,13 +362,11 @@ class BotManager:
         
         print(f"[Midterm] Student {sender_name}: {q_label} = {score}/{points_per_question}, Total: {current_total}/{total_marks}{resubmit_note}")
         
-        # Build questions_info for smart progress display
+        # Build questions_info for progress display
         answered_questions = list(questions_dict.keys())  # ["Q1", "Q3", etc.]
-        is_complete = len(answered_questions) >= total_questions
         questions_info = {
             "answered": answered_questions,
-            "total": total_questions,
-            "is_complete": is_complete
+            "total": total_questions
         }
         
         # Annotate with running total and progress info
@@ -365,8 +375,16 @@ class BotManager:
             score=score, 
             max_score=points_per_question,
             running_total=(current_total, total_marks),
-            questions_info=questions_info
+            questions_info=questions_info,
+            show_total=show_total
         )
+        
+        # Store the annotated image path for exam-end re-sending
+        async with async_session() as session:
+            progress = await session.get(StudentProgress, progress.id)
+            if progress:
+                progress.last_answer_image_path = str(annotated_path)
+                await session.commit()
         
         # Send as scheduled message
         schedule_time = datetime.now() + timedelta(days=365)
