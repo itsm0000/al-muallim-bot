@@ -205,32 +205,46 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     max_score = 10  # Default quiz mode
     running_total = None
     
-    logger.info(f"DB_AVAILABLE: {DB_AVAILABLE}, teacher_id: {teacher_id}")
+    logger.info(f"DB_AVAILABLE: {DB_AVAILABLE}, teacher_id (telegram): {teacher_id}")
     
     if DB_AVAILABLE and teacher_id:
         try:
             async with async_session() as session:
-                # Get midterm config
-                result = await session.execute(
-                    select(MidtermConfig).where(MidtermConfig.teacher_id == teacher_id)
+                # First, look up the database Teacher by telegram_id
+                # teacher_id passed here is the Telegram user ID, not the database ID
+                from database import Teacher
+                teacher_result = await session.execute(
+                    select(Teacher).where(Teacher.telegram_id == teacher_id)
                 )
-                midterm_config = result.scalar_one_or_none()
+                teacher = teacher_result.scalar_one_or_none()
                 
-                if midterm_config:
-                    logger.info(f"Found MidtermConfig: is_active={midterm_config.is_active}, "
-                               f"total_questions={midterm_config.total_questions}, "
-                               f"total_marks={midterm_config.total_marks}")
+                if teacher:
+                    db_teacher_id = teacher.id  # The actual database primary key
+                    logger.info(f"Found Teacher: db_id={db_teacher_id}, telegram_id={teacher_id}")
                     
-                    if midterm_config.is_active:
-                        # Calculate points per question
-                        total_marks = midterm_config.total_marks
-                        total_questions = midterm_config.total_questions
-                        max_score = total_marks // total_questions
-                        logger.info(f"✓ MIDTERM MODE ACTIVE: {total_questions} questions, {max_score} points each")
+                    # Now query MidtermConfig using the correct database teacher ID
+                    result = await session.execute(
+                        select(MidtermConfig).where(MidtermConfig.teacher_id == db_teacher_id)
+                    )
+                    midterm_config = result.scalar_one_or_none()
+                    
+                    if midterm_config:
+                        logger.info(f"Found MidtermConfig: is_active={midterm_config.is_active}, "
+                                   f"total_questions={midterm_config.total_questions}, "
+                                   f"total_marks={midterm_config.total_marks}")
+                    
+                        if midterm_config.is_active:
+                            # Calculate points per question
+                            total_marks = midterm_config.total_marks
+                            total_questions = midterm_config.total_questions
+                            max_score = total_marks // total_questions
+                            logger.info(f"✓ MIDTERM MODE ACTIVE: {total_questions} questions, {max_score} points each")
+                        else:
+                            logger.info("MidtermConfig exists but is_active=False, using quiz mode")
                     else:
-                        logger.info("MidtermConfig exists but is_active=False, using quiz mode")
+                        logger.info(f"No MidtermConfig found for db_teacher_id={db_teacher_id}, using quiz mode (10 points)")
                 else:
-                    logger.info(f"No MidtermConfig found for teacher_id={teacher_id}, using quiz mode (10 points)")
+                    logger.info(f"No Teacher found for telegram_id={teacher_id}, using quiz mode")
         except Exception as e:
             logger.error(f"Error checking midterm config: {e}")
             import traceback
