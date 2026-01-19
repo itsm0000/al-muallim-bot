@@ -350,12 +350,22 @@ class BotManager:
         
         print(f"[Midterm] Student {sender_name}: {q_label} = {score}/{points_per_question}, Total: {current_total}/{total_marks}{resubmit_note}")
         
-        # Annotate with running total
+        # Build questions_info for smart progress display
+        answered_questions = list(questions_dict.keys())  # ["Q1", "Q3", etc.]
+        is_complete = len(answered_questions) >= total_questions
+        questions_info = {
+            "answered": answered_questions,
+            "total": total_questions,
+            "is_complete": is_complete
+        }
+        
+        # Annotate with running total and progress info
         annotated_path = draw_annotations_with_ocr(
             answer_path, annotations,
             score=score, 
             max_score=points_per_question,
-            running_total=(current_total, total_marks)
+            running_total=(current_total, total_marks),
+            questions_info=questions_info
         )
         
         # Send as scheduled message

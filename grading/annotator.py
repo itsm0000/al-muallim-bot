@@ -244,7 +244,8 @@ def merge_box_group(boxes: list) -> dict:
 
 
 def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: int = None, 
-                               max_score: int = 10, running_total: tuple = None, 
+                               max_score: int = 10, running_total: tuple = None,
+                               questions_info: dict = None,
                                output_path: Path = None) -> Path:
     """
     Draw hand-drawn style annotations on image using OCR-detected text boxes.
@@ -256,6 +257,8 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         score: Score for this question
         max_score: Maximum score for this question (default 10, can be 25 for midterms)
         running_total: Optional tuple of (current_total, max_total) for midterm mode
+        questions_info: Optional dict with progress info:
+                       {"answered": ["Q1", "Q3"], "total": 4, "is_complete": False}
         output_path: Optional custom output path
         
     Returns:
@@ -277,7 +280,7 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
         
         # Draw score circle(s) in top-left corner
         if score is not None:
-            _draw_score_circles(draw, score, max_score, running_total)
+            _draw_score_circles(draw, score, max_score, running_total, questions_info)
         
         # Group nearby OCR boxes into answer regions
         logger.info(f"Merging {len(ocr_boxes)} OCR boxes into answer regions...")
@@ -372,19 +375,21 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
 
 
 def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10, 
-                        running_total: tuple = None):
+                        running_total: tuple = None, questions_info: dict = None):
     """
-    Draw score circle(s) in the top-left corner.
+    Draw score circle(s) in the top-left corner with smart progress display.
     
-    For midterm mode, draws two circles:
-    - Circle 1: This question's score (e.g., "20/25")
-    - Circle 2: Running total (e.g., "60/100")
+    For midterm mode:
+    - Always shows this question's score circle
+    - Shows progress text (e.g., "1 of 4") below the score
+    - Only shows running total circle when is_complete=True OR all questions answered
     
     Args:
         draw: ImageDraw object
         score: Score for this question
         max_score: Maximum score for this question
         running_total: Optional tuple (current_total, max_total) for midterm mode
+        questions_info: Optional dict {"answered": ["Q1", "Q3"], "total": 4, "is_complete": False}
     """
     circle_radius = 90
     circle_center = (circle_radius + 20, circle_radius + 20)
@@ -392,6 +397,7 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
     # Load font
     font = _get_score_font(72)
     small_font = _get_score_font(48)
+    tiny_font = _get_score_font(32)
     
     # Draw main score circle
     draw.ellipse(
@@ -415,12 +421,35 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
     )
     draw.text(text_position, score_text, fill=HANDDRAWN_COLOR, font=font)
     
-    # Draw running total circle if provided (for midterm mode)
-    if running_total is not None:
+    # Determine if we should show progress or final total
+    is_complete = False
+    if questions_info:
+        answered = questions_info.get("answered", [])
+        total = questions_info.get("total", 0)
+        is_complete = questions_info.get("is_complete", False)
+        
+        # Auto-complete if all questions answered
+        if len(answered) >= total and total > 0:
+            is_complete = True
+        
+        # Draw progress text below main circle (inside the margin)
+        if not is_complete and total > 0:
+            progress_text = f"{len(answered)} of {total}"
+            bbox = draw.textbbox((0, 0), progress_text, font=tiny_font)
+            text_width = bbox[2] - bbox[0]
+            progress_position = (
+                circle_center[0] - text_width // 2,
+                circle_center[1] + circle_radius + 10
+            )
+            draw.text(progress_position, progress_text, fill=HANDDRAWN_COLOR, font=tiny_font)
+    
+    # Draw running total circle only if complete OR no questions_info provided (legacy mode)
+    if running_total is not None and (is_complete or questions_info is None):
         current_total, max_total = running_total
         
-        # Position below main circle
-        total_center = (circle_center[0], circle_center[1] + circle_radius * 2 + 30)
+        # Position below main circle (and below progress text if shown)
+        y_offset = 30 if questions_info is None else 60
+        total_center = (circle_center[0], circle_center[1] + circle_radius * 2 + y_offset)
         total_radius = 70
         
         draw.ellipse(

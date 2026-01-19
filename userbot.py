@@ -275,6 +275,7 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     # Update student progress and get running total (midterm mode only)
     q_label = None
     is_resubmission = False
+    questions_info = None  # Initialize for smart progress display
     if DB_AVAILABLE and midterm_config and midterm_config.is_active and sender_id:
         try:
             async with async_session() as session:
@@ -345,14 +346,26 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
                 resubmit_note = " (update)" if is_resubmission else ""
                 logger.info(f"Midterm progress: {q_label}={score}/{max_score}, Total={progress.total_score}/{midterm_config.total_marks}{resubmit_note}")
                 
+                # Build questions_info for smart progress display
+                answered_questions = list(questions_dict.keys())  # ["Q1", "Q3", etc.]
+                total_qs = midterm_config.total_questions
+                is_complete = len(answered_questions) >= total_qs
+                questions_info = {
+                    "answered": answered_questions,
+                    "total": total_qs,
+                    "is_complete": is_complete
+                }
+                
         except Exception as e:
             logger.error(f"Error updating student progress: {e}")
     
     # Annotate the image with correct score format
+    # questions_info is None for quiz mode, defined for midterm mode
     annotated_path = draw_annotations_with_ocr(
         answer_path, text_annotations, 
         score=score, max_score=max_score,
-        running_total=running_total
+        running_total=running_total,
+        questions_info=questions_info if DB_AVAILABLE and midterm_config and midterm_config.is_active else None
     )
     
     # Format feedback
