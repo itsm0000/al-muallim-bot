@@ -244,6 +244,7 @@ class BotManager:
         
         - Score is out of (total_marks / total_questions)
         - Running total is tracked per student
+        - Uses AI-detected question numbers instead of sequential counting
         """
         from database import async_session, StudentProgress
         from sqlalchemy import select
@@ -256,17 +257,24 @@ class BotManager:
         
         print(f"[Midterm] {total_questions} questions, {points_per_question} points each")
         
-        # Grade with adjusted max score
+        # Grade with adjusted max score AND total_questions for AI detection
         grader = self.get_grader()
         loop = asyncio.get_event_loop()
         
         result = await loop.run_in_executor(
             None,
-            lambda: grader.grade_answer(bot.quiz_path, answer_path, max_score=points_per_question)
+            lambda: grader.grade_answer(
+                bot.quiz_path, answer_path, 
+                max_score=points_per_question,
+                total_questions=total_questions
+            )
         )
         
         annotations = result.get('annotations', [])
         score = result.get('score', 0)
+        
+        # Get AI-detected question numbers (fall back to sequential if not detected)
+        detected_questions = result.get('question_numbers', [])
         
         # Ensure score doesn't exceed max
         score = min(score, points_per_question)
@@ -293,14 +301,40 @@ class BotManager:
                 )
                 session.add(progress)
             
-            # Update progress
+            # Parse existing answers
             questions_dict = json.loads(progress.questions_answered or "{}")
-            question_num = progress.questions_count + 1
-            questions_dict[f"Q{question_num}"] = score
             
+            # Determine question number(s) to update
+            if detected_questions:
+                # Validate and cap question numbers
+                valid_questions = [q for q in detected_questions if 1 <= q <= total_questions]
+                if not valid_questions:
+                    print(f"[Midterm] WARNING: AI detected invalid questions {detected_questions}, falling back to sequential")
+                    valid_questions = [progress.questions_count + 1]
+            else:
+                # Fall back to sequential if AI didn't detect
+                print(f"[Midterm] No question numbers detected, using sequential")
+                valid_questions = [progress.questions_count + 1]
+            
+            # Handle the detected question(s)
+            is_resubmission = False
+            for q_num in valid_questions:
+                q_key = f"Q{q_num}"
+                if q_key in questions_dict:
+                    # Re-submission: update existing score
+                    old_score = questions_dict[q_key]
+                    questions_dict[q_key] = score
+                    is_resubmission = True
+                    print(f"[Midterm] RE-SUBMISSION: {q_key} updated from {old_score} to {score}")
+                else:
+                    # New question
+                    questions_dict[q_key] = score
+                    progress.questions_count += 1
+                    print(f"[Midterm] NEW: {q_key} = {score}")
+            
+            # Recalculate total score from all questions
+            progress.total_score = sum(questions_dict.values())
             progress.questions_answered = json.dumps(questions_dict)
-            progress.total_score += score
-            progress.questions_count += 1
             progress.student_name = sender_name
             
             await session.commit()
@@ -310,7 +344,11 @@ class BotManager:
             questions_answered = progress.questions_count
             max_so_far = questions_answered * points_per_question
         
-        print(f"[Midterm] Student {sender_name}: Q{questions_answered} = {score}/{points_per_question}, Total: {current_total}/{max_so_far}")
+        # Build question label for display
+        q_label = ",".join([f"Q{q}" for q in valid_questions])
+        resubmit_note = " (تحديث)" if is_resubmission else ""
+        
+        print(f"[Midterm] Student {sender_name}: {q_label} = {score}/{points_per_question}, Total: {current_total}/{total_marks}{resubmit_note}")
         
         # Annotate with running total
         annotated_path = draw_annotations_with_ocr(
@@ -325,7 +363,7 @@ class BotManager:
         await bot.client.send_file(
             job['chat_id'],
             annotated_path,
-            caption=f"[Q{questions_answered}] {score}/{points_per_question} | Total: {current_total}/{total_marks}",
+            caption=f"[{q_label}] {score}/{points_per_question} | Total: {current_total}/{total_marks}{resubmit_note}",
             schedule=schedule_time
         )
         

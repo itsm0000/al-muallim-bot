@@ -243,12 +243,21 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     loop = asyncio.get_event_loop()
     grader = get_grader()
     
-    logger.info(f">>> Calling grader.grade_answer with max_score={max_score}")
+    # Get total_questions for AI detection (midterm mode only)
+    total_questions_for_ai = None
+    if midterm_config and midterm_config.is_active:
+        total_questions_for_ai = midterm_config.total_questions
+    
+    logger.info(f">>> Calling grader.grade_answer with max_score={max_score}, total_questions={total_questions_for_ai}")
     
     # Grade in thread pool (CPU-bound operation)
     grading_result = await loop.run_in_executor(
         None, 
-        lambda: grader.grade_answer(quiz_path, answer_path, max_score=max_score)
+        lambda: grader.grade_answer(
+            quiz_path, answer_path, 
+            max_score=max_score,
+            total_questions=total_questions_for_ai
+        )
     )
     
     # Get annotations and score
@@ -256,10 +265,16 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
     raw_score = grading_result.get('score', 0)
     score = min(raw_score, max_score)  # Cap at max
     
+    # Get AI-detected question numbers
+    detected_questions = grading_result.get('question_numbers', [])
+    
     logger.info(f"<<< Grader returned: raw_score={raw_score}, capped_score={score}, max_score={max_score}")
+    logger.info(f"    Detected questions: {detected_questions}")
     logger.info(f"    Annotations: {len(text_annotations)} items")
     
     # Update student progress and get running total (midterm mode only)
+    q_label = None
+    is_resubmission = False
     if DB_AVAILABLE and midterm_config and midterm_config.is_active and sender_id:
         try:
             async with async_session() as session:
@@ -284,15 +299,41 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
                     )
                     session.add(progress)
                 
-                # Update progress
+                # Parse existing answers
                 import json as json_module
                 questions_dict = json_module.loads(progress.questions_answered or "{}")
-                question_num = progress.questions_count + 1
-                questions_dict[f"Q{question_num}"] = score
                 
+                # Determine question number(s) to update
+                total_qs = midterm_config.total_questions
+                if detected_questions:
+                    # Validate and cap question numbers
+                    valid_questions = [q for q in detected_questions if 1 <= q <= total_qs]
+                    if not valid_questions:
+                        logger.warning(f"AI detected invalid questions {detected_questions}, falling back to sequential")
+                        valid_questions = [progress.questions_count + 1]
+                else:
+                    # Fall back to sequential if AI didn't detect
+                    logger.info("No question numbers detected, using sequential")
+                    valid_questions = [progress.questions_count + 1]
+                
+                # Handle the detected question(s)
+                for q_num in valid_questions:
+                    q_key = f"Q{q_num}"
+                    if q_key in questions_dict:
+                        # Re-submission: update existing score
+                        old_score = questions_dict[q_key]
+                        questions_dict[q_key] = score
+                        is_resubmission = True
+                        logger.info(f"RE-SUBMISSION: {q_key} updated from {old_score} to {score}")
+                    else:
+                        # New question
+                        questions_dict[q_key] = score
+                        progress.questions_count += 1
+                        logger.info(f"NEW: {q_key} = {score}")
+                
+                # Recalculate total score from all questions
+                progress.total_score = sum(questions_dict.values())
                 progress.questions_answered = json_module.dumps(questions_dict)
-                progress.total_score += score
-                progress.questions_count += 1
                 if sender_name:
                     progress.student_name = sender_name
                 
@@ -300,7 +341,9 @@ async def grade_student_answer(answer_path: Path, quiz_path: Path,
                 
                 # Set running total for annotation
                 running_total = (progress.total_score, midterm_config.total_marks)
-                logger.info(f"Midterm progress: Q{question_num}={score}/{max_score}, Total={progress.total_score}/{midterm_config.total_marks}")
+                q_label = ",".join([f"Q{q}" for q in valid_questions])
+                resubmit_note = " (update)" if is_resubmission else ""
+                logger.info(f"Midterm progress: {q_label}={score}/{max_score}, Total={progress.total_score}/{midterm_config.total_marks}{resubmit_note}")
                 
         except Exception as e:
             logger.error(f"Error updating student progress: {e}")

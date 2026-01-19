@@ -3,8 +3,8 @@
                     مشروع المُعلم - التوثيق الكامل
 ================================================================================
 
-Updated: January 18, 2026
-Version: 2.1.2 (Grading Improvements - PDF, Fuzzy Matching, Comprehension)
+Updated: January 19, 2026
+Version: 2.1.3 (AI Question Detection)
 
 === OVERVIEW ===
 
@@ -293,6 +293,25 @@ STORED ON VM (not in Git):
 
 === CHANGELOG ===
 
+January 19, 2026 (v2.1.3 - AI Question Detection):
+- FIXED: Question number tracking bug (Q5 showing when only Q1-Q4 exist)
+  * AI now detects which question the student is answering
+  * Looks for explicit markers: "Q1", "س1", "السؤال الأول", etc.
+  * Falls back to content matching if no explicit marker found
+- NEW: Re-submission handling
+  * If student re-submits same question, score is updated (not added)
+  * Caption shows "(تحديث)" for re-submissions
+- NEW: Multiple questions in one image supported
+  * AI can detect multiple question numbers in single submission
+  * All detected questions are processed and tracked
+- IMPROVED: grader.py prompt includes question detection instructions
+  * New "question_numbers" field in JSON response
+  * total_questions parameter passed for validation
+- UPDATED: bot_manager.py and userbot.py
+  * Use AI-detected question numbers instead of sequential counter
+  * Recalculate total score from all questions (not incremental)
+  * Validate question numbers against exam structure
+
 January 18, 2026 (v2.1.2 - Grading Improvements):
 - FIXED: PDF quiz files now upload directly to Gemini (no more Vision API errors)
   * grading/grader.py: Detects PDFs and uploads as file objects instead of OCR
@@ -304,9 +323,6 @@ January 18, 2026 (v2.1.2 - Grading Improvements):
   * Accept answers in student's own words if conceptually correct
   * Only mark as "mistake" if concept/logic is actually wrong
 - ADDED: Detailed server-side logging of Gemini responses (invisible to students)
-- PENDING: Question number tracking bug (Q5 shows when only Q1-Q4 exist)
-  * bot_manager.py line 300-301 increments counter for every submission
-  * Needs fix: System should track actual question number (Q1-Q4)
 
 January 16, 2026 (v2.1.1):
 - FIXED: Midterm grading logic for sub-questions

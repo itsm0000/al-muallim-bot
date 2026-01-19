@@ -62,9 +62,27 @@ class PhysicsGrader:
             
         return uploaded_files
     
-    def _build_system_prompt(self, max_score: int = 10) -> str:
-        """Build the system prompt for grading with configurable max score"""
+    def _build_system_prompt(self, max_score: int = 10, total_questions: int = None) -> str:
+        """Build the system prompt for grading with configurable max score
         
+        Args:
+            max_score: Maximum score for this question
+            total_questions: Total number of questions in midterm (for validation)
+        """
+        
+        # Add question detection instructions for midterm mode
+        question_detection_note = ""
+        if total_questions:
+            question_detection_note = f"""
+## 🔢 تحديد رقم السؤال (مهم جداً!):
+
+**يجب تحديد رقم السؤال الذي يجيب عليه الطالب.** ابحث عن:
+1. أرقام مكتوبة صراحة: "س1"، "Q1"، "السؤال الأول"، "1-"، "1)"
+2. إذا لم يكتب الطالب رقماً، قارن محتوى الإجابة مع أسئلة الامتحان لتحديد السؤال
+3. إذا أجاب على أكثر من سؤال في صورة واحدة، اذكر جميع الأرقام
+
+**ملاحظة**: هذا الامتحان يحتوي على {total_questions} أسئلة. أرقام الأسئلة الصالحة: 1 إلى {total_questions}
+"""
         
         prompt = f"""أنت "المعلم" (Al-Muallim)، مُصحح فيزياء متفهم وعادل.
 
@@ -76,7 +94,7 @@ class PhysicsGrader:
 ✅ إذا استخدم مصطلحات مختلفة لكن المعنى صحيح → صحيح!
 ✅ إذا الإجابة تدل على فهم المفهوم العلمي → صحيح!
 ❌ فقط إذا كان المفهوم أو المنطق خاطئ → خطأ!
-
+{question_detection_note}
 ## المنهج الدراسي (للمرجعية فقط):
 ملفات PDF المرفقة تحتوي على المفاهيم الصحيحة. استخدمها لفهم ما يجب أن يعرفه الطالب، لكن **لا تتوقع أن ينسخ الطالب النص حرفياً**.
 
@@ -115,6 +133,7 @@ class PhysicsGrader:
 
 {{
   "score": <رقم من 0 إلى {max_score}>,
+  "question_numbers": [<قائمة أرقام الأسئلة التي يجيب عليها الطالب، مثال: [1] أو [2,3]>],
   "feedback_ar": "<ملاحظات مختصرة>",
   "annotations": [
     {{
@@ -123,6 +142,8 @@ class PhysicsGrader:
     }}
   ]
 }}
+
+**ملاحظة مهمة**: حقل "question_numbers" إجباري! إذا لم تستطع تحديد رقم السؤال، أرجع [1] كافتراضي.
 
 ## تعليمات annotations:
 
@@ -149,7 +170,8 @@ class PhysicsGrader:
         self,
         question_image_path: Path,
         answer_image_path: Path,
-        max_score: int = 10
+        max_score: int = 10,
+        total_questions: int = None
     ) -> Dict:
         """
         Grade a student's answer using Gemini 3 Pro with DETERMINISTIC OCR-first approach.
@@ -162,11 +184,12 @@ class PhysicsGrader:
             question_image_path: Path to the question image
             answer_image_path: Path to the student's answer image
             max_score: Maximum score for this answer (default 10, can be 25 for midterms)
+            total_questions: Total number of questions in midterm (for AI question detection)
             
         Returns:
-            Dictionary with score, feedback_ar, and annotations
+            Dictionary with score, question_numbers, feedback_ar, and annotations
         """
-        logger.info(f"Starting grading process (max_score={max_score})")
+        logger.info(f"Starting grading process (max_score={max_score}, total_questions={total_questions})")
         logger.info(f"Question: {question_image_path}")
         logger.info(f"Answer: {answer_image_path}")
         
@@ -200,7 +223,7 @@ class PhysicsGrader:
             logger.debug(f"Answer preview: {answer_text[:200]}...")
             
             # STEP 3: Build prompt and send to Gemini
-            system_prompt = self._build_system_prompt(max_score=max_score)
+            system_prompt = self._build_system_prompt(max_score=max_score, total_questions=total_questions)
             logger.info(f"Step 3: Sending to {GEMINI_MODEL} for grading...")
             
             # Build contents list with curriculum PDFs first
@@ -247,6 +270,7 @@ class PhysicsGrader:
             
             # Detailed logging for debugging (server-side only, not visible to students)
             logger.info(f"Grading complete. Score: {result.get('score', 'N/A')}/{max_score}")
+            logger.info(f"Detected question numbers: {result.get('question_numbers', [])}")
             logger.info(f"Annotations: {len(result.get('annotations', []))}")
             
             # Log each annotation's label for debugging
