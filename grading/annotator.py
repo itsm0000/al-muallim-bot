@@ -377,19 +377,19 @@ def draw_annotations_with_ocr(image_path: Path, text_annotations: list, score: i
 def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10, 
                         running_total: tuple = None, questions_info: dict = None):
     """
-    Draw score circle(s) in the top-left corner with smart progress display.
+    Draw score circle(s) in the top-left corner with progress info.
     
     For midterm mode:
     - Always shows this question's score circle
-    - Shows progress text (e.g., "1 of 4") below the score
-    - Only shows running total circle when is_complete=True OR all questions answered
+    - Shows progress text (e.g., "1 of 4") as additional info
+    - ALWAYS shows running total circle (this IS the current grade)
     
     Args:
         draw: ImageDraw object
         score: Score for this question
         max_score: Maximum score for this question
         running_total: Optional tuple (current_total, max_total) for midterm mode
-        questions_info: Optional dict {"answered": ["Q1", "Q3"], "total": 4, "is_complete": False}
+        questions_info: Optional dict {"answered": ["Q1", "Q3"], "total": 4}
     """
     circle_radius = 90
     circle_center = (circle_radius + 20, circle_radius + 20)
@@ -421,19 +421,13 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
     )
     draw.text(text_position, score_text, fill=HANDDRAWN_COLOR, font=font)
     
-    # Determine if we should show progress or final total
-    is_complete = False
+    # Draw progress text if questions_info provided (informational only)
+    progress_height = 0
     if questions_info:
         answered = questions_info.get("answered", [])
         total = questions_info.get("total", 0)
-        is_complete = questions_info.get("is_complete", False)
         
-        # Auto-complete if all questions answered
-        if len(answered) >= total and total > 0:
-            is_complete = True
-        
-        # Draw progress text below main circle (inside the margin)
-        if not is_complete and total > 0:
+        if total > 0:
             progress_text = f"{len(answered)} of {total}"
             bbox = draw.textbbox((0, 0), progress_text, font=tiny_font)
             text_width = bbox[2] - bbox[0]
@@ -442,13 +436,14 @@ def _draw_score_circles(draw: ImageDraw, score: int, max_score: int = 10,
                 circle_center[1] + circle_radius + 10
             )
             draw.text(progress_position, progress_text, fill=HANDDRAWN_COLOR, font=tiny_font)
+            progress_height = 40  # Space for progress text
     
-    # Draw running total circle only if complete OR no questions_info provided (legacy mode)
-    if running_total is not None and (is_complete or questions_info is None):
+    # ALWAYS draw running total circle if provided (this IS the current grade!)
+    if running_total is not None:
         current_total, max_total = running_total
         
         # Position below main circle (and below progress text if shown)
-        y_offset = 30 if questions_info is None else 60
+        y_offset = 30 + progress_height
         total_center = (circle_center[0], circle_center[1] + circle_radius * 2 + y_offset)
         total_radius = 70
         
