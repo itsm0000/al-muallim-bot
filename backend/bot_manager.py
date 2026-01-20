@@ -123,6 +123,14 @@ class BotManager:
             
             sender = await event.get_sender()
             sender_name = sender.first_name if sender else "Unknown"
+            sender_id = sender.id if sender else 0
+            
+            # FEEDBACK LOOP PREVENTION: Skip messages from other teacher accounts
+            # Check if sender is another teacher bot (their Telegram ID would be in our bots dict)
+            other_teacher_telegram_ids = [b.telegram_id for b in self.bots.values() if b.telegram_id != bot.telegram_id]
+            if sender_id in other_teacher_telegram_ids:
+                print(f"⚠️ Skipping message from another teacher bot (telegram_id={sender_id})")
+                return
             
             # Handle photos (student answers)
             if event.photo:
