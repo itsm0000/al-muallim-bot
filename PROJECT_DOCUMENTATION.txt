@@ -75,7 +75,7 @@ SYSTEM COMPONENTS:
                     │              PhysicsGrader              │
                     │           (Gemini 3 Pro Preview)        │
                     │                     │                   │
-                    │              ┌─────────────────┐        │
+                    │        http://34.71.188.46:8000      ┌─────────────────┐        │
                     │              │ MidtermConfig   │        │
                     │              │ StudentProgress │        │
                     │              │ (Per-teacher DB)│        │
@@ -86,7 +86,7 @@ SYSTEM COMPONENTS:
 === HOW IT WORKS ===
 
 FOR TEACHERS:
-1. Open http://34.71.188.46:8000
+1. Open 
 2. Enter phone number (with country code)
 3. Enter the code received on Telegram
 4. Upload a quiz/exam image (PDF also supported)
