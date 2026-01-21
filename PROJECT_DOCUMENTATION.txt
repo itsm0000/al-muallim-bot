@@ -3,8 +3,8 @@
                     مشروع المُعلم - التوثيق الكامل
 ================================================================================
 
-Updated: January 19, 2026
-Version: 2.1.4 (Main vs Sub-Question Detection Fix)
+Updated: January 21, 2026
+Version: 2.2.0 (Context Caching Architecture + Accurate Per-Sub Scoring)
 
 === OVERVIEW ===
 
@@ -129,18 +129,80 @@ MODEL: Gemini 3 Pro Preview
 (Configured in config.py: GEMINI_MODEL = "gemini-3-pro-preview")
 
 GRADING FILES:
-- grading/grader.py     - PhysicsGrader class, AI prompts, OCR integration
+- grading/grading_session.py - NEW! Context caching + holistic grading
+- grading/grader.py     - PhysicsGrader class (legacy per-image grading)
 - grading/annotator.py  - Hand-drawn style annotations (checkmarks, X's, circles)
 - utils/ocr_detector.py - Google Cloud Vision OCR for text detection
 
-HOW GRADING WORKS:
-1. Student image received via Telegram
-2. OCR extracts text from the image (Google Cloud Vision)
-3. AI (Gemini) grades each answer against curriculum PDFs
-4. AI returns JSON with score and annotations
-5. Annotator draws marks only on AI-identified answers
-6. Score circle(s) added to top-left corner
-7. Annotated image sent back as scheduled message
+
+=== CONTEXT CACHING ARCHITECTURE (v2.2 - NEW!) ===
+
+The grading system was completely redesigned in v2.2 to use Gemini's context caching.
+
+OLD FLOW (v2.1):
+  1. Upload exam PDF
+  2. For each student image:
+     - Upload image
+     - Send prompt with image
+     - Get response
+     - Repeat for every image separately
+  PROBLEM: No holistic view, possible duplicate scoring, inconsistent per-image scores
+
+NEW FLOW (v2.2):
+  1. PHASE 1 - Create Grading Session (once per exam):
+     - Upload curriculum PDFs
+     - Upload exam PDF
+     - Create cached context with 24-hour TTL
+     - Context includes: exam structure, scoring rules, curriculum
+
+  2. PHASE 2 - Grade Student (one API call per student):
+     - Upload ALL student images at once
+     - Single Gemini request referencing cached context
+     - AI sees complete student submission holistically
+     - Returns grades + per-image annotations
+     - Annotator draws checkmarks on each image
+
+BENEFITS:
+  - ✅ No duplicate scoring (AI sees all images together)
+  - ✅ Cost savings (context cached, not re-sent)
+  - ✅ Accurate per-image partial scores
+  - ✅ Content-based question identification
+
+KEY CLASS: GradingSession (grading/grading_session.py)
+
+  # Create session (cache context)
+  session = await GradingSession.create(
+      curriculum_pdfs=["curriculum1.pdf", "curriculum2.pdf"],
+      exam_pdf="exam.pdf",
+      display_name="final-exam-session",
+      ttl_hours=24
+  )
+  
+  # Grade student (single API call)
+  result = session.grade_student(
+      student_images=[photo1, photo2, ...],
+      output_dir=Path("graded_output")
+  )
+  
+  # Result includes:
+  # - student_grades: per-question scores
+  # - image_annotations: per-image checkmark data
+  # - annotated_images: paths to graded images
+  # - total_score: overall score
+
+
+HOW GRADING WORKS (v2.2):
+1. Teacher uploads exam PDF → GradingSession created
+2. Curriculum + exam cached in Gemini (24-hour TTL)
+3. Student submits photos via Telegram
+4. ALL student photos uploaded to Gemini in ONE request
+5. Gemini reads handwriting directly from images (no OCR for grading)
+6. AI identifies questions by:
+   - Explicit markers ("س1", "ج4/", etc.)
+   - Content matching (comparisons to exam questions)
+7. AI calculates per-image partial scores
+8. Annotator uses OCR to find text positions, draws checkmarks
+9. Annotated images returned to student
 
 SCORING ANNOTATIONS:
 - ✓ Blue checkmark = Correct answer
@@ -218,8 +280,10 @@ al-muallim-bot/
 │       └── index.html          # PWA frontend (Arabic, dark theme, midterm toggle)
 │
 ├── grading/
-│   ├── grader.py               # PhysicsGrader - AI prompts, OCR-first grading
+│   ├── grading_session.py      # NEW! Context caching + holistic grading
+│   ├── grader.py               # PhysicsGrader - AI prompts (legacy per-image)
 │   ├── annotator.py            # Hand-drawn annotations + score circles
+│   ├── exam_analyzer.py        # Exam structure extraction
 │   ├── pdf_finder.py           # Locates curriculum PDFs
 │   └── test_handdrawn.py       # Test script for annotation rendering
 │
@@ -229,9 +293,12 @@ al-muallim-bot/
 │
 ├── config.py                   # Configuration (model, API keys, paths)
 ├── userbot.py                  # Standalone bot (v2.1: midterm support added)
+├── local_test.py               # NEW! Test grading locally with GradingSession
 ├── .env                        # API keys (local, not in Git)
 ├── .gitignore                  # Protects sensitive files
 ├── curriculum/                 # Physics curriculum PDFs (2 files)
+├── graded_output/              # NEW! Annotated images output directory
+├── grading_result.json         # NEW! Latest grading test results
 └── PROJECT_DOCUMENTATION.txt   # This file
 
 
@@ -292,6 +359,34 @@ STORED ON VM (not in Git):
 
 
 === CHANGELOG ===
+
+January 21, 2026 (v2.2.0 - Context Caching + Accurate Scoring):
+- MAJOR: New context caching architecture (grading_session.py)
+  * Curriculum + exam cached once, reused for all students
+  * ALL student images graded in single API call (holistic view)
+  * No more duplicate scoring or missing questions
+  * 24-hour cache TTL, auto-managed
+- FIXED: Per-image partial scoring now accurate
+  * Q1 (10 subs): 2.5 points per sub-question
+  * Q2 (compulsory): 25 points for complete answer
+  * Q3 (choose_one): 25 points for answering ANY one option
+  * Q4 (4 problems): 6.25 points per problem
+- FIXED: Question identification without explicit markers
+  * AI now matches answer CONTENT to exam questions
+  * Example: Conclusions about dielectric → Q2 (تأثير العازل)
+  * Example: Faraday experiment drawing → Q3 (نشاط عملي)
+- NEW: Grading prompt rewritten in Arabic for better accuracy
+  * Explicit scoring tables and examples
+  * Instructions to ignore point values in exam PDF
+  * Each question forced to 25 points (100 total)
+- IMPROVED: Annotation text matching
+  * Prompt requests exact first 15-20 characters of student handwriting
+  * Better fuzzy matching between AI annotations and OCR boxes
+  * More checkmarks now correctly drawn on answers
+- NEW: local_test.py for testing grading flow locally
+  * Uses GradingSession class
+  * Saves results to grading_result.json
+  * Annotated images saved to graded_output/
 
 January 19, 2026 (v2.1.3 - AI Question Detection):
 - FIXED: Question number tracking bug (Q5 showing when only Q1-Q4 exist)

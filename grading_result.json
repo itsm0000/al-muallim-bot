@@ -1,0 +1,250 @@
+{
+  "exam_analysis": {
+    "total_questions": 4,
+    "total_points": 100,
+    "questions": [
+      {
+        "number": 1,
+        "type": "theoretical",
+        "points": 25,
+        "sub_count": 12,
+        "required_count": 10,
+        "requirement": "إجابة 10 نقاط من أصل 12"
+      },
+      {
+        "number": 2,
+        "type": "explain",
+        "points": 25,
+        "sub_count": 1,
+        "required_count": 1,
+        "requirement": "إجابة إلزامية"
+      },
+      {
+        "number": 3,
+        "type": "activity",
+        "points": 25,
+        "sub_count": 2,
+        "required_count": 1,
+        "requirement": "اختر نشاطاً واحداً"
+      },
+      {
+        "number": 4,
+        "type": "problem_solving",
+        "points": 25,
+        "sub_count": 5,
+        "required_count": 4,
+        "requirement": "حل 4 مسائل من أصل 5"
+      }
+    ]
+  },
+  "student_grades": {
+    "Q1": {
+      "score": 25,
+      "max_score": 25,
+      "answered_parts": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "found_in_images": [
+        "photo_1_2026-01-20_16-39-09.jpg",
+        "photo_2_2026-01-20_16-39-09.jpg",
+        "photo_3_2026-01-20_16-39-09.jpg"
+      ],
+      "feedback": "إجابة ممتازة وشاملة لجميع الفقرات المطلوبة."
+    },
+    "Q2": {
+      "score": 25,
+      "max_score": 25,
+      "answered_parts": [
+        "Main"
+      ],
+      "found_in_images": [
+        "photo_4_2026-01-20_16-39-09.jpg"
+      ],
+      "feedback": "شرح دقيق وصحيح لتأثير العازل على السعة وفرق الجهد."
+    },
+    "Q3": {
+      "score": 25,
+      "max_score": 25,
+      "answered_parts": [
+        "Activity 2 (Faraday)"
+      ],
+      "found_in_images": [
+        "photo_5_2026-01-20_16-39-09.jpg"
+      ],
+      "feedback": "نشاط فراداي مشروح بشكل صحيح مع الرسم والخطوات والاستنتاج."
+    },
+    "Q4": {
+      "score": 25,
+      "max_score": 25,
+      "answered_parts": [
+        "Problem 1",
+        "Problem 2",
+        "Problem 3",
+        "Problem 5"
+      ],
+      "found_in_images": [
+        "photo_9_2026-01-20_16-39-09.jpg",
+        "photo_8_2026-01-20_16-39-09.jpg",
+        "photo_7_2026-01-20_16-39-09.jpg",
+        "photo_10_2026-01-20_16-39-09.jpg"
+      ],
+      "feedback": "حلول المسائل الرياضية صحيحة ومنظمة. تم ترك المسألة الرابعة كما هو مسموح."
+    }
+  },
+  "image_annotations": {
+    "photo_1_2026-01-20_16-39-09.jpg": {
+      "question_number": 1,
+      "score": 7.5,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "كلا لا يمكن لان",
+          "label": "correct"
+        },
+        {
+          "text": "بسبب قلة البعد",
+          "label": "correct"
+        },
+        {
+          "text": "العازل الكهربائي",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_2_2026-01-20_16-39-09.jpg": {
+      "question_number": 1,
+      "score": 2.5,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "العوازل القطبية",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_3_2026-01-20_16-39-09.jpg": {
+      "question_number": 1,
+      "score": 15,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "منع الانهيار المبكر",
+          "label": "correct"
+        },
+        {
+          "text": "يحدد مقدار اقصى",
+          "label": "correct"
+        },
+        {
+          "text": "للحصول على سعة",
+          "label": "correct"
+        },
+        {
+          "text": "لان جهد الصفيحتين",
+          "label": "correct"
+        },
+        {
+          "text": "يتغير البعد عند",
+          "label": "correct"
+        },
+        {
+          "text": "F = C/V = C/J",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_4_2026-01-20_16-39-09.jpg": {
+      "question_number": 2,
+      "score": 25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "الاستنتاج 1- ادخال",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_5_2026-01-20_16-39-09.jpg": {
+      "question_number": 3,
+      "score": 25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "العمل 1- نربط",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_7_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "r=6 ohm R=14",
+          "label": "correct"
+        },
+        {
+          "text": "س 4 / ترك",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_8_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "C1,2=C1+C2=5+10",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_9_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "d=0.4cm => d=",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_10_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "Ck1 = k C1",
+          "label": "correct"
+        }
+      ]
+    }
+  },
+  "total_score": 100,
+  "total_max": 100,
+  "overall_feedback": "أحسنت! إجابة كاملة ونموذجية. الفهم للمفاهيم النظرية ممتاز، والحلول الرياضية دقيقة ومنظمة. تم اختيار المسائل والأسئلة بذكاء.",
+  "annotated_images": {
+    "photo_1_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_1_2026-01-20_16-39-09.jpg",
+    "photo_2_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_2_2026-01-20_16-39-09.jpg",
+    "photo_3_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_3_2026-01-20_16-39-09.jpg",
+    "photo_4_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_4_2026-01-20_16-39-09.jpg",
+    "photo_5_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_5_2026-01-20_16-39-09.jpg",
+    "photo_7_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_7_2026-01-20_16-39-09.jpg",
+    "photo_8_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_8_2026-01-20_16-39-09.jpg",
+    "photo_9_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_9_2026-01-20_16-39-09.jpg",
+    "photo_10_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_10_2026-01-20_16-39-09.jpg"
+  }
+}

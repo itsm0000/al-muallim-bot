@@ -62,12 +62,13 @@ class PhysicsGrader:
             
         return uploaded_files
     
-    def _build_system_prompt(self, max_score: int = 10, total_questions: int = None) -> str:
+    def _build_system_prompt(self, max_score: int = 10, total_questions: int = None, exam_context: str = "") -> str:
         """Build the system prompt for grading with configurable max score
         
         Args:
             max_score: Maximum score for this question
             total_questions: Total number of questions in midterm (for validation)
+            exam_context: Dynamic exam structure context from exam analyzer
         """
         
         # Add question detection instructions for midterm mode
@@ -116,28 +117,20 @@ class PhysicsGrader:
 
 ## 📊 نظام النقاط (الدرجة القصوى: {max_score}):
 
-### ⚡ قاعدة الدرجات الأساسية - الدرجة النسبية:
-**هام جداً**: احسب الدرجة بناءً على نسبة الإجابات الصحيحة!
+{exam_context}
 
-### خطوات حساب الدرجة:
-1. **انظر لورقة الأسئلة (PDF)** وعدّ كل الأسئلة الفرعية المطلوبة (T_total)
-2. عدّ الأسئلة الفرعية التي أجاب عليها الطالب بشكل صحيح (T_correct)
-3. الدرجة = (T_correct ÷ T_total) × {max_score}
+## ⚡ قواعد التقييم:
 
-### مثال عملي:
-- ورقة الأسئلة تحتوي على 10 أسئلة فرعية
-- الطالب أجاب على 3 فرعية فقط بشكل صحيح
-- الدرجة = (3 ÷ 10) × 25 = **7.5 نقطة**
+### لجميع الأسئلة:
+- **correct** ✅: الإجابة صحيحة → تُحتسب النقاط الكاملة
+- **partial** ⚠️: فهم جزئي → نصف النقاط
+- **mistake** ❌: خطأ → صفر
 
-### ⚠️ ملاحظة مهمة:
-- **لا تعطِ الدرجة الكاملة** إلا إذا أجاب الطالب على **كل** الأسئلة الفرعية بشكل صحيح!
-- إذا أجاب على جزء فقط → أعطِ نسبة من الدرجة
-
-### معايير التقييم لكل إجابة فرعية:
-- **correct** ✅: الإجابة صحيحة → **تُحتسب**
-- **partial** ⚠️: فهم جزئي → **نصف نقطة**
-- **mistake** ❌: خطأ → **لا تُحتسب**
-- **unclear** ❔: غير مقروء → **لا تُحتسب**
+### ⚠️ قاعدة مهمة جداً:
+إذا كان السؤال من نوع "اختر واحداً" (choose_one):
+- الطالب يختار خياراً واحداً فقط!
+- إذا أجاب على **خيار واحد** بشكل صحيح = **الدرجة الكاملة!**
+- **لا تعاقبه** لأنه لم يجب على الخيارات الأخرى!
 
 ## متطلبات الإخراج (JSON فقط):
 
@@ -205,9 +198,19 @@ class PhysicsGrader:
         
         try:
             from utils.ocr_detector import extract_full_text
+            from grading.exam_analyzer import get_grading_context
             
-            # Check if question is a PDF (PDFs can't be OCR'd, but Gemini supports them directly)
+            # STEP 0: Analyze exam structure (cached after first call)
+            exam_context = ""
             is_question_pdf = str(question_image_path).lower().endswith('.pdf')
+            if is_question_pdf:
+                logger.info("Step 0: Analyzing exam structure...")
+                try:
+                    exam_context = get_grading_context(question_image_path)
+                    logger.info("Exam structure analyzed and cached")
+                except Exception as e:
+                    logger.warning(f"Exam analysis failed, using default: {e}")
+                    exam_context = "## هيكل الامتحان (افتراضي)\nاستخدم حكمك لفهم هيكل الامتحان من PDF المرفق."
             
             # STEP 1: Handle question file based on type
             if is_question_pdf:
@@ -233,7 +236,11 @@ class PhysicsGrader:
             logger.debug(f"Answer preview: {answer_text[:200]}...")
             
             # STEP 3: Build prompt and send to Gemini
-            system_prompt = self._build_system_prompt(max_score=max_score, total_questions=total_questions)
+            system_prompt = self._build_system_prompt(
+                max_score=max_score, 
+                total_questions=total_questions,
+                exam_context=exam_context
+            )
             logger.info(f"Step 3: Sending to {GEMINI_MODEL} for grading...")
             
             # Build contents list with curriculum PDFs first
