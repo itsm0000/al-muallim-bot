@@ -5,35 +5,35 @@
     "questions": [
       {
         "number": 1,
-        "type": "theoretical",
+        "type": "multiple_parts",
         "points": 25,
         "sub_count": 12,
         "required_count": 10,
-        "requirement": "إجابة 10 نقاط من أصل 12"
+        "requirement": "اجب عم يأتي مع ترك نقطتين"
       },
       {
         "number": 2,
-        "type": "explain",
+        "type": "compulsory",
         "points": 25,
         "sub_count": 1,
         "required_count": 1,
-        "requirement": "إجابة إلزامية"
+        "requirement": "ماذا يحصل لكل من المجال والطاقة والجهد"
       },
       {
         "number": 3,
-        "type": "activity",
+        "type": "choose_one",
         "points": 25,
         "sub_count": 2,
         "required_count": 1,
-        "requirement": "اختر نشاطاً واحداً"
+        "requirement": "اجب عن احدهما (نشاط)"
       },
       {
         "number": 4,
-        "type": "problem_solving",
+        "type": "multiple_parts",
         "points": 25,
         "sub_count": 5,
         "required_count": 4,
-        "requirement": "حل 4 مسائل من أصل 5"
+        "requirement": "اجب عم يأتي مع ترك نقطة (مسائل)"
       }
     ]
   },
@@ -55,55 +55,55 @@
       ],
       "found_in_images": [
         "photo_1_2026-01-20_16-39-09.jpg",
-        "photo_2_2026-01-20_16-39-09.jpg",
-        "photo_3_2026-01-20_16-39-09.jpg"
+        "photo_2_2026-01-20_16-39-09.jpg"
       ],
-      "feedback": "إجابة ممتازة وشاملة لجميع الفقرات المطلوبة."
+      "feedback": "إجابات دقيقة وشاملة لجميع التعاليل والمقارنات المطلوبة."
     },
     "Q2": {
       "score": 25,
       "max_score": 25,
       "answered_parts": [
-        "Main"
+        "كامل"
       ],
       "found_in_images": [
-        "photo_4_2026-01-20_16-39-09.jpg"
+        "photo_8_2026-01-20_16-39-09.jpg",
+        "photo_9_2026-01-20_16-39-09.jpg"
       ],
-      "feedback": "شرح دقيق وصحيح لتأثير العازل على السعة وفرق الجهد."
+      "feedback": "توضيح ممتاز لتأثير العازل على الكميات الفيزيائية مع القوانين."
     },
     "Q3": {
       "score": 25,
       "max_score": 25,
       "answered_parts": [
-        "Activity 2 (Faraday)"
+        "2 (تجربة فراداي)"
       ],
       "found_in_images": [
-        "photo_5_2026-01-20_16-39-09.jpg"
+        "photo_3_2026-01-20_16-39-09.jpg"
       ],
-      "feedback": "نشاط فراداي مشروح بشكل صحيح مع الرسم والخطوات والاستنتاج."
+      "feedback": "رسم الدائرة صحيح وخطوات النشاط والاستنتاج كاملة."
     },
     "Q4": {
       "score": 25,
       "max_score": 25,
       "answered_parts": [
-        "Problem 1",
-        "Problem 2",
-        "Problem 3",
-        "Problem 5"
+        "1",
+        "2",
+        "3",
+        "5"
       ],
       "found_in_images": [
-        "photo_9_2026-01-20_16-39-09.jpg",
-        "photo_8_2026-01-20_16-39-09.jpg",
         "photo_7_2026-01-20_16-39-09.jpg",
+        "photo_5_2026-01-20_16-39-09.jpg",
+        "photo_4_2026-01-20_16-39-09.jpg",
         "photo_10_2026-01-20_16-39-09.jpg"
       ],
-      "feedback": "حلول المسائل الرياضية صحيحة ومنظمة. تم ترك المسألة الرابعة كما هو مسموح."
+      "feedback": "حلول المسائل نموذجية، النواتج النهائية والوحدات صحيحة."
     }
   },
   "image_annotations": {
     "photo_1_2026-01-20_16-39-09.jpg": {
       "question_number": 1,
-      "score": 7.5,
+      "score": 10,
       "max_score": 25,
       "annotations": [
         {
@@ -111,27 +111,12 @@
           "label": "correct"
         },
         {
-          "text": "بسبب قلة البعد",
-          "label": "correct"
-        },
-        {
-          "text": "العازل الكهربائي",
+          "text": "بسبب قلة البعد عن",
           "label": "correct"
         }
       ]
     },
     "photo_2_2026-01-20_16-39-09.jpg": {
-      "question_number": 1,
-      "score": 2.5,
-      "max_score": 25,
-      "annotations": [
-        {
-          "text": "العوازل القطبية",
-          "label": "correct"
-        }
-      ]
-    },
-    "photo_3_2026-01-20_16-39-09.jpg": {
       "question_number": 1,
       "score": 15,
       "max_score": 25,
@@ -141,45 +126,52 @@
           "label": "correct"
         },
         {
-          "text": "يحدد مقدار اقصى",
-          "label": "correct"
-        },
-        {
-          "text": "للحصول على سعة",
-          "label": "correct"
-        },
-        {
-          "text": "لان جهد الصفيحتين",
-          "label": "correct"
-        },
-        {
-          "text": "يتغير البعد عند",
-          "label": "correct"
-        },
-        {
-          "text": "F = C/V = C/J",
+          "text": "لان سعة المتسعة",
           "label": "correct"
         }
       ]
     },
-    "photo_4_2026-01-20_16-39-09.jpg": {
-      "question_number": 2,
-      "score": 25,
-      "max_score": 25,
-      "annotations": [
-        {
-          "text": "الاستنتاج 1- ادخال",
-          "label": "correct"
-        }
-      ]
-    },
-    "photo_5_2026-01-20_16-39-09.jpg": {
+    "photo_3_2026-01-20_16-39-09.jpg": {
       "question_number": 3,
       "score": 25,
       "max_score": 25,
       "annotations": [
         {
-          "text": "العمل 1- نربط",
+          "text": "نربط جهاز الفولطميتر",
+          "label": "correct"
+        },
+        {
+          "text": "عندما ندخل عازل",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_4_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "AVC=IxR=0.2x6",
+          "label": "correct"
+        },
+        {
+          "text": "PE=1/2 Q dV",
+          "label": "correct"
+        }
+      ]
+    },
+    "photo_5_2026-01-20_16-39-09.jpg": {
+      "question_number": 4,
+      "score": 6.25,
+      "max_score": 25,
+      "annotations": [
+        {
+          "text": "Ceq=(15x30)/45",
+          "label": "correct"
+        },
+        {
+          "text": "Q2=10x4=40uC",
           "label": "correct"
         }
       ]
@@ -190,33 +182,37 @@
       "max_score": 25,
       "annotations": [
         {
-          "text": "r=6 ohm R=14",
+          "text": "C=AE/d=100x10",
           "label": "correct"
         },
         {
-          "text": "س 4 / ترك",
+          "text": "CK=44.25 pF",
           "label": "correct"
         }
       ]
     },
     "photo_8_2026-01-20_16-39-09.jpg": {
-      "question_number": 4,
-      "score": 6.25,
+      "question_number": 2,
+      "score": 12.5,
       "max_score": 25,
       "annotations": [
         {
-          "text": "C1,2=C1+C2=5+10",
+          "text": "المجال الكهربائي يقل",
           "label": "correct"
         }
       ]
     },
     "photo_9_2026-01-20_16-39-09.jpg": {
-      "question_number": 4,
-      "score": 6.25,
+      "question_number": 2,
+      "score": 12.5,
       "max_score": 25,
       "annotations": [
         {
-          "text": "d=0.4cm => d=",
+          "text": "بما ان البطارية مفصولة",
+          "label": "correct"
+        },
+        {
+          "text": "PEk=PE/k",
           "label": "correct"
         }
       ]
@@ -227,7 +223,11 @@
       "max_score": 25,
       "annotations": [
         {
-          "text": "Ck1 = k C1",
+          "text": "Ceqk=(36x18)/(54)",
+          "label": "correct"
+        },
+        {
+          "text": "Q=72uC",
           "label": "correct"
         }
       ]
@@ -235,7 +235,7 @@
   },
   "total_score": 100,
   "total_max": 100,
-  "overall_feedback": "أحسنت! إجابة كاملة ونموذجية. الفهم للمفاهيم النظرية ممتاز، والحلول الرياضية دقيقة ومنظمة. تم اختيار المسائل والأسئلة بذكاء.",
+  "overall_feedback": "أحسنت! إجابة ممتازة ونموذجية. أظهرت فهماً عميقاً للمادة سواء في االجانب النظري (التعاليل والأنشطة) أو في حل المسائل الرياضية بدقة عالية.",
   "annotated_images": {
     "photo_1_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_1_2026-01-20_16-39-09.jpg",
     "photo_2_2026-01-20_16-39-09.jpg": "C:\\Users\\MT\\OneDrive\\Documents\\antigravity\\al-muallim-bot\\graded_output\\graded_photo_2_2026-01-20_16-39-09.jpg",
