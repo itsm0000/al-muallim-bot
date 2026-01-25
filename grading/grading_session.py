@@ -263,6 +263,56 @@ class GradingSession:
         
         return cls(cache_name=cache.name, client=client)
     
+    @classmethod
+    def create_free_tier(
+        cls,
+        curriculum_pdfs: List[Path],
+        exam_pdf: Path,
+        display_name: str = None
+    ) -> 'GradingSession':
+        """
+        Create a grading session WITHOUT context caching (for free tier API).
+        
+        Note: This uploads files each time but doesn't use caching.
+        Works with Google AI Studio free API keys.
+        
+        Args:
+            curriculum_pdfs: List of paths to curriculum PDF files
+            exam_pdf: Path to the exam PDF file
+            display_name: Optional name for logging
+            
+        Returns:
+            GradingSession instance (with uploaded_files instead of cache)
+        """
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        
+        logger.info("Creating FREE TIER grading session (no caching)...")
+        logger.info(f"Curriculum PDFs: {[p.name for p in curriculum_pdfs]}")
+        logger.info(f"Exam PDF: {exam_pdf.name}")
+        
+        # Upload all files
+        uploaded_files = []
+        
+        for pdf_path in curriculum_pdfs:
+            logger.info(f"Uploading {pdf_path.name}...")
+            file = client.files.upload(file=pdf_path)
+            uploaded_files.append(file)
+            logger.info(f"✓ {pdf_path.name} uploaded")
+        
+        # Upload exam PDF
+        logger.info(f"Uploading {exam_pdf.name}...")
+        exam_file = client.files.upload(file=exam_pdf)
+        uploaded_files.append(exam_file)
+        logger.info(f"✓ {exam_pdf.name} uploaded")
+        
+        logger.info(f"Free tier session ready with {len(uploaded_files)} files")
+        
+        # Create instance with files stored directly (no cache)
+        instance = cls(cache_name=None, client=client)
+        instance.uploaded_context_files = uploaded_files
+        instance.is_free_tier = True
+        return instance
+    
     def grade_student(self, student_images: List[Path], output_dir: Path = None) -> Dict:
         """
         Grade a student's submission (all images at once) and annotate images.
@@ -309,13 +359,26 @@ class GradingSession:
         
         logger.info("Sending grading request to Gemini...")
         
-        response = self.client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                cached_content=self.cache_name
+        # Check if we're in free tier mode (no cache)
+        if getattr(self, 'is_free_tier', False):
+            # Free tier: include context files directly in request
+            all_contents = self.uploaded_context_files + contents
+            response = self.client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=all_contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=HOLISTIC_GRADING_PROMPT
+                )
             )
-        )
+        else:
+            # Paid tier: use cached context
+            response = self.client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    cached_content=self.cache_name
+                )
+            )
         
         logger.info(f"Response received. Usage: {response.usage_metadata}")
         

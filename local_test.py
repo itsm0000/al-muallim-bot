@@ -102,15 +102,14 @@ def main():
     
     print()
     print("=" * 60)
-    print("PHASE 1: CREATING GRADING SESSION (Caching Context)")
+    print("PHASE 1: CREATING GRADING SESSION (Free Tier - No Caching)")
     print("=" * 60)
     print()
     
-    # Create grading session
-    session = GradingSession.create(
+    # Create grading session (FREE TIER - no context caching)
+    session = GradingSession.create_free_tier(
         curriculum_pdfs=curriculum_pdfs,
         exam_pdf=exam_pdf,
-        ttl_hours=24,
         display_name="local-test-session"
     )
     
